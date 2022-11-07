@@ -1,37 +1,41 @@
+use std::ops::Mul;
+
 use bevy::{prelude::*, render::camera::ScalingMode};
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins)
         .add_startup_system(setup)
-        .add_system(cube_movement)
+        .add_system(camera_movement)
         .run();
 }
 
-fn cube_movement(
+fn camera_movement(
     keyboard_input: Res<Input<KeyCode>>,
-    mut head_positions: Query<&mut Transform, With<Camera>>,
+    mut camera_positions: Query<&mut Transform, With<Camera>>,
     time: Res<Time>,
 ) {
-    let cameraSpeed = 5.0;
-    for mut transform in head_positions.iter_mut() {
+    let camera_speed = 5.0;
+    for mut transform in camera_positions.iter_mut() {
         if keyboard_input.pressed(KeyCode::A) {
-            transform.translation.x -= cameraSpeed * time.delta_seconds();
+            transform.translation += Vec3::new(-1.0, 0.0, 1.0)
+                .mul(time.delta_seconds())
+                .mul(camera_speed);
         }
         if keyboard_input.pressed(KeyCode::D) {
-            transform.translation.x += cameraSpeed * time.delta_seconds();
+            transform.translation += Vec3::new(1.0, 0.0, -1.0)
+                .mul(time.delta_seconds())
+                .mul(camera_speed);
         }
         if keyboard_input.pressed(KeyCode::W) {
-            transform.translation.z -= cameraSpeed * time.delta_seconds();
+            transform.translation -= Vec3::new(1.0, 0.0, 1.0)
+                .mul(time.delta_seconds())
+                .mul(camera_speed);
         }
         if keyboard_input.pressed(KeyCode::S) {
-            transform.translation.z += cameraSpeed * time.delta_seconds();
-        }
-        if keyboard_input.pressed(KeyCode::Space) {
-            transform.translation.y += cameraSpeed * time.delta_seconds();
-        }
-        if keyboard_input.pressed(KeyCode::LShift) {
-            transform.translation.y -= cameraSpeed * time.delta_seconds();
+            transform.translation += Vec3::new(1.0, 0.0, 1.0)
+                .mul(time.delta_seconds())
+                .mul(camera_speed);
         }
     }
 }
