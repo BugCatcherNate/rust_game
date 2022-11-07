@@ -7,6 +7,7 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_startup_system(setup)
         .add_system(camera_movement)
+        .add_system(mouse_button_input)
         .run();
 }
 
@@ -37,6 +38,23 @@ fn camera_movement(
                 .mul(time.delta_seconds())
                 .mul(camera_speed);
         }
+    }
+}
+
+fn mouse_button_input(buttons: Res<Input<MouseButton>>, windows: Res<Windows>) {
+    if buttons.just_pressed(MouseButton::Left) {
+        // For multi-window applications, you need to use a specific window ID here.
+        let window = windows.get_primary().unwrap();
+
+        if let Some(_position) = window.cursor_position() {
+            // cursor is inside the window, position given
+
+            info!("Left pressed x:{}, y:{}", _position.x, _position.y);
+        } else {
+            // cursor is not inside the window
+        }
+
+        // Left button was pressed
     }
 }
 
