@@ -3,11 +3,13 @@ use winit::{
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
+use log::debug;
 
 pub fn run() {
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new().build(&event_loop).unwrap();
-
+    window.set_title("GAME_ENGINE");
+    debug!("Window created");
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
             ref event,

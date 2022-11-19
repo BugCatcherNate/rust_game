@@ -1,5 +1,9 @@
-use rust_game::run;
+mod core;
+use log::{debug};
 
 fn main() {
-    run();
+    env_logger::init();
+    debug!("Application started");
+    core::main_window::run();
 }
+
