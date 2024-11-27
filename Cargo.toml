@@ -5,5 +5,5 @@ edition = "2021"
 
 [dependencies]
 
-winit = "0.27"
-wgpu = "0.14"
+winit = "0.30"
+wgpu = "23.0"
