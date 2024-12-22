@@ -1,8 +1,10 @@
-use log::{debug};
-use super::window;
+use log::{info};
 
 pub fn initialize(){
-    debug!("Application initialize");
-    window::run_window();
+    info!("Application initialize");
 
+}
+
+pub fn shutdown(){
+    info!("Application shutdown");
 }
