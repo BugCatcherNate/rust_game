@@ -1,6 +1,7 @@
 use crate::archetypes::Archetype;
 use crate::components::{Position, Name};
 use crate::ecs::entity_manager::EntityManager;
+use crate::ecs::tag_manager::TagManager;
 use std::collections::HashMap;
 use log::debug;
 
@@ -8,6 +9,7 @@ pub struct ECS {
     pub archetypes: Vec<Archetype>,
     pub entity_to_location: HashMap<u32, (usize, usize)>,
     pub entity_manager: EntityManager,
+    pub tag_manager: TagManager,
 }
 
 impl ECS {
@@ -16,6 +18,7 @@ impl ECS {
             archetypes: Vec::new(),
             entity_to_location: HashMap::new(),
             entity_manager: EntityManager::new(),
+            tag_manager: TagManager::new(), 
         }
     }
 

@@ -20,7 +20,17 @@ fn test_add_entity() {
     assert_eq!(components.0, &position);
     assert_eq!(components.1, &name);
 }
+#[test]
+fn add_tag_using_ecs() {
+    let mut ecs = ECS::new();
+    let position = Position { x: 5.0, y: 10.0 };
+    let name = Name("Finder".to_string());
+    ecs.add_entity(position.clone(), name.clone());
+    ecs.tag_manager.add_tag(0, "player");
+    let entities = ecs.tag_manager.get_entities_with_tag("player").unwrap();
+    assert!(entities.contains(&0));
 
+}
 #[test]
 fn test_find_entity() {
     let mut ecs = ECS::new();
