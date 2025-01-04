@@ -3,14 +3,18 @@ mod archetypes;
 mod components;
 mod systems;
 mod ecs;
+mod graphics;
 
 use components::{Position, Name};
 use systems::MovementSystem;
 use ecs::ECS;
+use graphics::game_window::run;
+use pollster;
 
 fn main() {
     env_logger::init();
     modules::core::initialize();
+    pollster::block_on(run());
     let mut ecs = ECS::new();
     ecs.add_entity(Position { x: 0.0, y: 0.0 }, Name("Nathan".to_string()));
     ecs.add_entity(Position { x: 0.0, y: 0.0 }, Name("Ronald".to_string()));
