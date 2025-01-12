@@ -1,6 +1,7 @@
 use crate::components::{Position, Name};
 
 #[derive(Debug)]
+#[derive(Clone)]
 pub struct Archetype {
     pub entity_ids: Vec<u32>,
     pub positions: Vec<Position>,

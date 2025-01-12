@@ -24,8 +24,8 @@ fn main() {
     ecs.tag_manager.add_tag(0, "player");
     ecs.tag_manager.add_tag(0, "camera");
     ecs.tag_manager.add_tag(1, "player");
-
-    systems_manager.update(&ecs.archetypes);
+    
+    systems_manager.update(&mut ecs.archetypes);
     if let Some(entities) =  ecs.tag_manager.get_entities_with_tag("player") {
         println!("Entities with player tag: {:?}", entities);
     }

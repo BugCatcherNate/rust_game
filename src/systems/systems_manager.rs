@@ -24,9 +24,9 @@ impl SystemsManager {
         }
     }
 
-    pub fn update(&self, mut archetypes: &Vec<Archetype>) {
+    pub fn update(&self, archetypes: &mut Vec<Archetype>) {
         for system in &self.systems {
-            for archetype in archetypes{
+            for archetype in archetypes.iter_mut(){
                 system.update(archetype);
         }
     }
