@@ -4,3 +4,9 @@ pub struct Position {
     pub y: f32,
 }
 
+
+impl PartialEq<&Position> for Position {
+    fn eq(&self, other: &&Position) -> bool {
+        self.x == other.x && self.y == other.y
+    }
+}

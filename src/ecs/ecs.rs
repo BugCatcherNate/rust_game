@@ -1,5 +1,5 @@
 use crate::archetypes::Archetype;
-use crate::components::{Position, Name};
+use crate::components::{Position, Name, Model};
 use crate::ecs::entity_manager::EntityManager;
 use crate::ecs::tag_manager::TagManager;
 use std::collections::HashMap;
@@ -24,8 +24,9 @@ impl ECS {
 
     pub fn add_entity(
         &mut self,
-        position: Position,
-        name: Name,
+        position: Option<Position>,
+        name: Option<Name>,
+        model: Option<Model>,
     ) {
         let id = self.entity_manager.create_entity();
         if self.archetypes.is_empty() {
@@ -36,7 +37,7 @@ impl ECS {
         let index_within_archetype = archetype.entity_ids.len();
 
         // Add entity data
-        archetype.add_entity(id, position,name);
+        archetype.add_entity(id, position,name, model);
         self.entity_to_location.insert(id, (archetype_index, index_within_archetype));
         debug!("Entity {} created. Current entity count: {}", id, self.entity_to_location.len()); 
     }
@@ -49,29 +50,35 @@ impl ECS {
         }
     }
 
-    pub fn find_entity_components(
-        &self,
-        id: u32,
-    ) -> Option<(&Position, &Name)> {
+    pub fn find_entity_components(&self, id: u32) -> Option<(&Option<Position>, &Option<Name>, &Option<Model>)> {
         if let Some(&(archetype_index, index_within_archetype)) = self.entity_to_location.get(&id) {
             let archetype = &self.archetypes[archetype_index];
-            Some((
-                &archetype.positions[index_within_archetype],
-                &archetype.names[index_within_archetype],
-            ))
-        } else {
-            None
+
+            // Ensure indexes are within bounds
+            if index_within_archetype < archetype.positions.len()
+                && index_within_archetype < archetype.names.len()
+                && index_within_archetype < archetype.models.len()
+            {
+                // Return references to the Option values, which may be Some or None
+                return Some((
+                    &archetype.positions[index_within_archetype],
+                    &archetype.names[index_within_archetype],
+                    &archetype.models[index_within_archetype],
+                ));
+            }
         }
+        None
     }
 
     pub fn remove_entity(&mut self, id:u32) {
-                if let Some((archetype_index, index_within_archetype)) = self.entity_to_location.remove(&id) {
+        if let Some((archetype_index, index_within_archetype)) = self.entity_to_location.remove(&id) {
             let archetype = &mut self.archetypes[archetype_index];
             
             // Remove components associated with this entity
             archetype.entity_ids.swap_remove(index_within_archetype);
             archetype.positions.swap_remove(index_within_archetype);
             archetype.names.swap_remove(index_within_archetype);
+            archetype.models.swap_remove(index_within_archetype);
             // Recycle the ID
             self.entity_manager.destroy_entity(id);
             debug!("Entity {} deleted. Current entity count: {}", id, self.entity_to_location.len());

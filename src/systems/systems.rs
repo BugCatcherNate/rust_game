@@ -11,16 +11,14 @@ pub struct Movement;
 impl System for Movement {
     fn update(&self, archetype: &mut Archetype) {
         for pos in archetype.positions.iter_mut() {
-            pos.x += 0.1;
-            pos.y += 0.1;
-    }
+            pos.as_mut().map(|position| {
+                position.x += 0.1;
+                position.y += 0.1;
+            });
+        }
     }
 
     fn as_any(&self) -> &dyn Any {
         self
     }
 }
-
-
-
-
