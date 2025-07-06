@@ -28,4 +28,3 @@ impl EntityManager {
         self.recycled_ids.insert(id);
     }
 }
-

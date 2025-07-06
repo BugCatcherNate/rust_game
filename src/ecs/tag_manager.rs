@@ -32,4 +32,3 @@ impl TagManager {
         self.tag_to_entities.get(tag)
     }
 }
-
