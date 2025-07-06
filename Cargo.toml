@@ -1,16 +1,20 @@
 [package]
 name = "rust_game"
-version = "0.1.0"
-edition = "2021"
+version = "0.1.1"
+edition = "2025"
 
 [dependencies]
 
-winit = "0.29"
-wgpu = "23.0"
 log = "0.4.22"
 env_logger = "0.10"
 pollster = "0.3"
 bytemuck = { version = "1.16", features = ["derive"]}
-image = { version = "0.24", default-features = false, features = ["png", "jpeg"]}
 cgmath = "0.18"
 lazy_static = "1.5.0"
+image = "0.25.6"
+vulkano = "0.34.0"
+vulkano-shaders = "0.34.0"
+winit = "0.28.0"
+rand = "0.8.5"
+
+

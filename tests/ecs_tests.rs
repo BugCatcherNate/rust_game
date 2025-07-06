@@ -1,5 +1,5 @@
+use rust_game::components::{Name, Position};
 use rust_game::ecs::ECS;
-use rust_game::components::{Position, Name};
 
 #[test]
 fn test_add_entity() {
@@ -122,4 +122,3 @@ fn test_reuse_entity_id() {
     assert_eq!(id, new_id);
     assert!(ecs.find_entity_components(new_id).is_some());
 }
-

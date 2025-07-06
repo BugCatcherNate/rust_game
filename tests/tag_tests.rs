@@ -110,4 +110,3 @@ fn test_handle_non_existent_tag() {
     // Ensure no panics and behavior is as expected
     assert!(tag_manager.get_entities_with_tag("NonExistent").is_none());
 }
-

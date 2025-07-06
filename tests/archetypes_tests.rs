@@ -1,6 +1,6 @@
 use rust_game::archetypes::Archetype;
-use rust_game::components::{Position, Name};
 use rust_game::components::model::{Model, Vertex};
+use rust_game::components::{Name, Position};
 
 #[test]
 fn test_new_archetype() {
@@ -13,7 +13,7 @@ fn test_new_archetype() {
 #[test]
 fn test_add_entity() {
     let mut archetype = Archetype::new();
-    
+
     let position = Position { x: 1.0, y: 2.0 };
     let name = Name("Test Entity".to_string());
     let entity_id = 42;
@@ -109,11 +109,10 @@ fn test_clear_model() {
 #[test]
 fn test_position_name_and_model() {
     let mut archetype = Archetype::new();
-    
+
     let position = Position { x: 1.0, y: 2.0 };
     let name = Name("Test Entity".to_string());
     let entity_id = 42;
-
 
     // Assuming you have model with vertices
     let model = Model::new();
@@ -121,7 +120,12 @@ fn test_position_name_and_model() {
     let mut model = model;
     model.add_vertex(vertex.clone());
 
-    archetype.add_entity(entity_id, Some(position.clone()), Some(name.clone()), Some(model.clone()));
+    archetype.add_entity(
+        entity_id,
+        Some(position.clone()),
+        Some(name.clone()),
+        Some(model.clone()),
+    );
     // Check that position, name, and model exist in archetype
     assert_eq!(archetype.entity_ids.len(), 1);
     assert_eq!(archetype.positions.len(), 1);
@@ -136,4 +140,3 @@ fn test_position_name_and_model() {
     assert_eq!(m.as_ref().unwrap().vertices.len(), 1); // Unwrap Model to access vertices
     assert_eq!(m.as_ref().unwrap().vertices[0], vertex);
 }
-
