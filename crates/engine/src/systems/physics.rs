@@ -23,6 +23,7 @@ pub struct PhysicsSystem {
 }
 
 impl PhysicsSystem {
+    const JUMP_SPEED: f32 = 5.5;
     pub fn new() -> Self {
         Self {
             pipeline: PhysicsPipeline::new(),
@@ -48,6 +49,7 @@ impl PhysicsSystem {
         self.clear_world();
         self.ensure_bodies_for_ecs(ecs);
         self.sync_positions_from_bodies(ecs);
+        self.update_ground_contacts(ecs);
     }
 
     pub fn update(&mut self, ecs: &mut ECS) {
@@ -57,6 +59,7 @@ impl PhysicsSystem {
         self.apply_input_velocity(ecs);
         self.step_world();
         self.sync_positions_from_bodies(ecs);
+        self.update_ground_contacts(ecs);
     }
 
     fn clear_world(&mut self) {
@@ -154,28 +157,39 @@ impl PhysicsSystem {
 
     fn apply_input_velocity(&mut self, ecs: &mut ECS) {
         for archetype in &mut ecs.archetypes {
+            let len = archetype.len();
             let (Some(physics), Some(inputs)) =
-                (archetype.physics.as_ref(), archetype.inputs.as_ref())
+                (archetype.physics.as_mut(), archetype.inputs.as_mut())
             else {
                 continue;
             };
 
-            for index in 0..archetype.len() {
-                let component = &physics[index];
+            for index in 0..len {
+                let component = &mut physics[index];
                 let Some(body_handle) = component.body_handle else {
                     continue;
                 };
                 let Some(body) = self.bodies.get_mut(body_handle) else {
                     continue;
                 };
+                let input = &mut inputs[index];
 
                 match component.body_type {
                     PhysicsBodyType::Dynamic => {
-                        let dir = inputs[index].direction;
-                        let speed_per_sec = inputs[index].speed / self.integration_parameters.dt;
+                        let jump = component.grounded && input.take_jump_request();
+                        let dir = input.direction;
+                        let speed_per_sec = input.speed / self.integration_parameters.dt;
+                        let current_y = body.linvel().y;
+                        let target_y = if jump {
+                            Self::JUMP_SPEED
+                        } else if dir[1].abs() > f32::EPSILON {
+                            dir[1] * speed_per_sec
+                        } else {
+                            current_y
+                        };
                         let velocity = Vector::new(
                             dir[0] * speed_per_sec,
-                            dir[1] * speed_per_sec,
+                            target_y,
                             dir[2] * speed_per_sec,
                         );
                         body.set_linvel(velocity, true);
@@ -195,6 +209,40 @@ impl PhysicsSystem {
                     }
                     PhysicsBodyType::Static => {}
                 }
+            }
+        }
+    }
+
+    fn update_ground_contacts(&mut self, ecs: &mut ECS) {
+        for archetype in &mut ecs.archetypes {
+            let Some(physics_vec) = archetype.physics.as_mut() else {
+                continue;
+            };
+            for component in physics_vec.iter_mut() {
+                let Some(collider_handle) = component.collider_handle else {
+                    component.grounded = false;
+                    continue;
+                };
+                let mut grounded = false;
+                for pair in self.narrow_phase.contact_pairs_with(collider_handle) {
+                    if !pair.has_any_active_contact {
+                        continue;
+                    }
+                    for manifold in &pair.manifolds {
+                        let mut normal = manifold.data.normal;
+                        if pair.collider2 == collider_handle {
+                            normal = -normal;
+                        }
+                        if normal.y > 0.5 {
+                            grounded = true;
+                            break;
+                        }
+                    }
+                    if grounded {
+                        break;
+                    }
+                }
+                component.grounded = grounded;
             }
         }
     }

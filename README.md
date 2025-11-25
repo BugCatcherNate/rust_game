@@ -19,6 +19,7 @@ An experiment-sized first-person game built on a lightweight Rust engine. The wo
 - **Modern rendering pipeline** using `wgpu` with `winit` for cross-platform windowing/input and HUD text via the renderer’s UI overlay.
 - **Entity Component System** purpose-built for this demo (`crates/engine/src/ecs`) providing archetype storage, tag queries, and per-component memory breakdown.
 - **Physics & movement** powered by `rapier3d` with dynamic, kinematic, and static bodies synced into the ECS positions.
+- **Automatic collider sizing**: omit `half_extents` in a `PhysicsComponentDefinition` to derive an axis-aligned box from the attached render/terrain geometry.
 - **Audio** playback through `rodio`, supporting ambient scene sounds that loop in the background.
 - **Script hooks and custom systems**: the engine exposes a `CustomSystem` trait plus script bindings so gameplay logic can extend the core update loop without modifying the engine.
 - **Data-driven scenes** assembled through `SceneDefinition`/`SceneLibrary` (Rust) or the YAML helpers under `assets/`, showing how to go from authored data to runtime ECS entities.
@@ -89,7 +90,7 @@ Additional YAML scenes in `assets/scene.yml`, `assets/other_scene.yml`, and `ass
 - **Add entities/components**: extend `SceneDefinition` builders (or YAML source) with new entities, tags, and components. `scene::apply_scene_definition` automatically instantiates ECS components from the definition structs.
 - **Add scripts**: register script bindings through `GameConfig::with_script_binding` so entities run script logic handled by the scripting system (see `ScriptComponent`).
 - **New rendering assets**: drop `.obj` models or textures under `assets/` and reference them from `ModelComponentDefinition`/`TextureComponentDefinition`.
-- **Physics tuning**: adjust `PhysicsComponentDefinition` half extents, restitution, and friction to change collision behavior. The physics system syncs Rapier bodies back into ECS positions each frame.
+- **Physics tuning**: adjust `PhysicsComponentDefinition` half extents, restitution, and friction to change collision behavior, or set `half_extents` to `None` to auto-fit a box collider to the render/terrain geometry. The physics system syncs Rapier bodies back into ECS positions each frame.
 - **HUD/Game state**: implement additional `CustomSystem`s to inject gameplay-specific text or commands; they integrate seamlessly with the engine’s renderer/UI overlay.
 
 ## Troubleshooting

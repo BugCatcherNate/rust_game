@@ -19,6 +19,7 @@ pub struct PhysicsComponent {
     pub friction: f32,
     pub body_handle: Option<RigidBodyHandle>,
     pub collider_handle: Option<ColliderHandle>,
+    pub grounded: bool,
 }
 
 impl PhysicsComponent {
@@ -30,6 +31,7 @@ impl PhysicsComponent {
             friction: 0.7,
             body_handle: None,
             collider_handle: None,
+            grounded: false,
         }
     }
 

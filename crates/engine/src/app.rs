@@ -141,6 +141,7 @@ struct GameApp {
     window: Option<Arc<Window>>,
     window_id: Option<WindowId>,
     pressed_keys: HashSet<KeyCode>,
+    just_pressed: HashSet<KeyCode>,
     player_id: u32,
     camera_id: u32,
     printed_state: bool,
@@ -176,6 +177,7 @@ impl GameApp {
             window: None,
             window_id: None,
             pressed_keys: HashSet::new(),
+            just_pressed: HashSet::new(),
             player_id: 0,
             camera_id: 0,
             printed_state: false,
@@ -531,9 +533,11 @@ impl ApplicationHandler for GameApp {
                     match event.state {
                         winit::event::ElementState::Pressed => {
                             self.pressed_keys.insert(code);
+                            self.just_pressed.insert(code);
                         }
                         winit::event::ElementState::Released => {
                             self.pressed_keys.remove(&code);
+                            self.just_pressed.remove(&code);
                         }
                     }
                 }
@@ -546,7 +550,9 @@ impl ApplicationHandler for GameApp {
                     &mut self.ecs,
                     self.camera_id,
                     &self.pressed_keys,
+                    &self.just_pressed,
                 );
+                self.just_pressed.clear();
                 MovementSystem::update(&mut self.ecs);
                 self.physics_system.update(&mut self.ecs);
                 for system in self.custom_systems.iter_mut() {

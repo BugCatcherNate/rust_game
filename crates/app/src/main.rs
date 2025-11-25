@@ -68,7 +68,7 @@ fn explorer_entity() -> EntityDefinition {
         input: Some(InputComponentDefinition { speed: Some(0.05) }),
         physics: Some(PhysicsComponentDefinition {
             body_type: PhysicsBodyType::Dynamic,
-            half_extents: [0.3, 0.9, 0.3],
+            half_extents: Some([0.3, 0.9, 0.3]),
             ..Default::default()
         }),
         ..Default::default()
@@ -96,7 +96,11 @@ fn labyrinth_floor() -> EntityDefinition {
         terrain: Some(terrain),
         physics: Some(PhysicsComponentDefinition {
             body_type: PhysicsBodyType::Static,
-            half_extents: [terrain_size * 0.5, terrain_height * 0.5, terrain_size * 0.5],
+            half_extents: Some([
+                terrain_size * 0.5,
+                terrain_height * 0.5,
+                terrain_size * 0.5,
+            ]),
             ..Default::default()
         }),
         ..Default::default()
@@ -116,7 +120,7 @@ fn exit_obelisk() -> EntityDefinition {
         0.8,
         "assets/textures/blue.png",
     )
-    .with_physics(box_physics(0.8, PhysicsBodyType::Static))
+    .with_physics(auto_box_physics(PhysicsBodyType::Static))
 }
 
 fn key_entities() -> Vec<EntityDefinition> {
@@ -336,7 +340,15 @@ impl PhysicsExt for EntityDefinition {
 fn box_physics(size: f32, body_type: PhysicsBodyType) -> PhysicsComponentDefinition {
     PhysicsComponentDefinition {
         body_type,
-        half_extents: [size * 0.5, size * 0.5, size * 0.5],
+        half_extents: Some([size * 0.5, size * 0.5, size * 0.5]),
+        ..Default::default()
+    }
+}
+
+fn auto_box_physics(body_type: PhysicsBodyType) -> PhysicsComponentDefinition {
+    PhysicsComponentDefinition {
+        body_type,
+        half_extents: None,
         ..Default::default()
     }
 }

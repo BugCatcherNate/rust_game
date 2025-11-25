@@ -194,7 +194,7 @@ impl Default for TerrainComponentDefinition {
 #[derive(Debug, Clone)]
 pub struct PhysicsComponentDefinition {
     pub body_type: PhysicsBodyType,
-    pub half_extents: [f32; 3],
+    pub half_extents: Option<[f32; 3]>,
     pub restitution: f32,
     pub friction: f32,
 }
@@ -203,7 +203,7 @@ impl Default for PhysicsComponentDefinition {
     fn default() -> Self {
         Self {
             body_type: PhysicsBodyType::Dynamic,
-            half_extents: [0.5, 0.5, 0.5],
+            half_extents: Some(default_physics_half_extents()),
             restitution: 0.2,
             friction: 0.7,
         }
@@ -283,6 +283,10 @@ fn default_fog_density() -> f32 {
     0.45
 }
 
+fn default_physics_half_extents() -> [f32; 3] {
+    [0.5, 0.5, 0.5]
+}
+
 pub fn apply_scene_definition(scene: &SceneDefinition, ecs: &mut ECS) -> SceneSettings {
     for entity in &scene.entities {
         let position = entity.position.clone();
@@ -330,6 +334,19 @@ pub fn apply_scene_definition(scene: &SceneDefinition, ecs: &mut ECS) -> SceneSe
                     terrain_cfg.model_asset.clone(),
                 ),
             );
+        }
+
+        if let Some(physics_cfg) = components.physics.as_ref() {
+            let resolved_half_extents = resolve_physics_half_extents(
+                physics_cfg.half_extents,
+                render_cfg.as_ref(),
+                components.terrain.as_ref(),
+            );
+            let mut physics =
+                PhysicsComponent::new(physics_cfg.body_type, resolved_half_extents);
+            physics.restitution = physics_cfg.restitution;
+            physics.friction = physics_cfg.friction;
+            ecs.add_physics_component(entity_id, physics);
         }
 
         if let Some(render_cfg) = render_cfg {
@@ -387,15 +404,29 @@ pub fn apply_scene_definition(scene: &SceneDefinition, ecs: &mut ECS) -> SceneSe
                 ),
             );
         }
-
-        if let Some(physics_cfg) = components.physics.as_ref() {
-            let mut physics =
-                PhysicsComponent::new(physics_cfg.body_type, physics_cfg.half_extents);
-            physics.restitution = physics_cfg.restitution;
-            physics.friction = physics_cfg.friction;
-            ecs.add_physics_component(entity_id, physics);
-        }
     }
 
     scene.settings.clone()
+}
+
+fn resolve_physics_half_extents(
+    explicit: Option<[f32; 3]>,
+    render: Option<&RenderComponentDefinition>,
+    terrain: Option<&TerrainComponentDefinition>,
+) -> [f32; 3] {
+    if let Some(half_extents) = explicit {
+        return half_extents;
+    }
+    if let Some(terrain) = terrain {
+        return [
+            terrain.size * 0.5,
+            terrain.height * 0.5,
+            terrain.size * 0.5,
+        ];
+    }
+    if let Some(render) = render {
+        let half = render.size * 0.5;
+        return [half, half, half];
+    }
+    default_physics_half_extents()
 }
