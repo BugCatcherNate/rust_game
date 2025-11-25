@@ -163,6 +163,7 @@ pub struct LightComponentDefinition {
     pub direction: [f32; 3],
     pub color: [f32; 3],
     pub intensity: f32,
+    pub point_radius: Option<f32>,
 }
 
 #[derive(Debug, Clone)]
@@ -380,14 +381,16 @@ pub fn apply_scene_definition(scene: &SceneDefinition, ecs: &mut ECS) -> SceneSe
         }
 
         if let Some(light_cfg) = components.light.as_ref() {
-            ecs.add_light_component(
-                entity_id,
+            let component = if let Some(radius) = light_cfg.point_radius {
+                LightComponent::point(radius, light_cfg.color, light_cfg.intensity)
+            } else {
                 LightComponent::directional(
                     light_cfg.direction,
                     light_cfg.color,
                     light_cfg.intensity,
-                ),
-            );
+                )
+            };
+            ecs.add_light_component(entity_id, component);
         }
 
         if let Some(texture_cfg) = texture_cfg {

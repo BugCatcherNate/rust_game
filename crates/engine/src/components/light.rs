@@ -1,6 +1,12 @@
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum LightKind {
+    Directional([f32; 3]),
+    Point { radius: f32 },
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct LightComponent {
-    pub direction: [f32; 3],
+    pub kind: LightKind,
     pub color: [f32; 3],
     pub intensity: f32,
 }
@@ -15,11 +21,19 @@ impl LightComponent {
             1.0
         };
         Self {
-            direction: [
+            kind: LightKind::Directional([
                 direction[0] * inv_len,
                 direction[1] * inv_len,
                 direction[2] * inv_len,
-            ],
+            ]),
+            color,
+            intensity,
+        }
+    }
+
+    pub fn point(radius: f32, color: [f32; 3], intensity: f32) -> Self {
+        Self {
+            kind: LightKind::Point { radius },
             color,
             intensity,
         }

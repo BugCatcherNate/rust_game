@@ -3,9 +3,14 @@ struct CameraUniform {
     eye_position: vec4<f32>,
 };
 
+const MAX_POINT_LIGHTS: u32 = 8u;
+
 struct LightUniform {
-    direction: vec4<f32>,
-    color: vec4<f32>,
+    directional_direction: vec4<f32>,
+    directional_color: vec4<f32>,
+    point_positions: array<vec4<f32>, MAX_POINT_LIGHTS>,
+    point_colors: array<vec4<f32>, MAX_POINT_LIGHTS>,
+    point_count: vec4<u32>,
 };
 
 struct VertexOut {
@@ -14,6 +19,7 @@ struct VertexOut {
     @location(1) normal: vec3<f32>,
     @location(2) uv: vec2<f32>,
     @location(3) fog: f32,
+    @location(4) world_pos: vec3<f32>,
 };
 
 @group(0) @binding(0)
@@ -51,6 +57,7 @@ fn vs_main(
     out.color = instance_color;
     out.normal = normalize(in_normal);
     out.uv = in_uv;
+    out.world_pos = world_pos;
     let eye = camera.eye_position.xyz;
     let distance_from_camera = length(world_pos - eye);
     let fog_density = fog.params.x;
@@ -61,11 +68,32 @@ fn vs_main(
 @fragment
 fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     let ambient = vec3<f32>(0.1, 0.1, 0.1);
-    let light_dir = normalize(-light.direction.xyz);
     let n = normalize(in.normal);
-    let diffuse_strength = max(dot(n, light_dir), 0.0);
-    let diffuse_color = light.color.xyz * light.color.w * diffuse_strength;
-    let lighting = ambient + diffuse_color;
+    var lighting = ambient;
+
+    if (light.directional_color.w > 0.0) {
+        let light_dir = normalize(-light.directional_direction.xyz);
+        let diffuse_strength = max(dot(n, light_dir), 0.0);
+        let diffuse_color = light.directional_color.xyz * light.directional_color.w * diffuse_strength;
+        lighting = lighting + diffuse_color;
+    }
+
+    let point_count = light.point_count.x;
+    for (var i: u32 = 0u; i < point_count && i < MAX_POINT_LIGHTS; i = i + 1u) {
+        let point_data = light.point_positions[i];
+        let point_color = light.point_colors[i];
+        let to_light = point_data.xyz - in.world_pos;
+        let dist = length(to_light);
+        if (point_color.w > 0.0 && point_data.w > 0.0) {
+            let dir = normalize(to_light);
+            let radius = point_data.w;
+            let attenuation = max(1.0 - dist / radius, 0.0);
+            let diffuse_strength = max(dot(n, dir), 0.0);
+            let diffuse_color = point_color.xyz * point_color.w * diffuse_strength * attenuation * attenuation;
+            lighting = lighting + diffuse_color;
+        }
+    }
+
     let tex_color = textureSample(texture_map, texture_sampler, in.uv);
     let base = tex_color.xyz * in.color;
     let shaded = base * lighting;

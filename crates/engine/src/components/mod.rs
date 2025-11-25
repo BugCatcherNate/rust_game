@@ -12,7 +12,7 @@ pub mod texture;
 
 pub use camera::CameraComponent;
 pub use input::InputComponent;
-pub use light::LightComponent;
+pub use light::{LightComponent, LightKind};
 pub use model::ModelComponent;
 pub use name::Name;
 pub use physics::{PhysicsBodyType, PhysicsComponent};

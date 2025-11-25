@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::components::{CameraComponent, Position};
+use crate::components::{CameraComponent, LightKind, Position};
 use crate::ecs::ECS;
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
@@ -222,11 +222,16 @@ struct CameraUniform {
     eye_position: [f32; 4],
 }
 
+const MAX_POINT_LIGHTS: usize = 8;
+
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct LightUniform {
-    direction: [f32; 4],
-    color: [f32; 4],
+    directional_direction: [f32; 4],
+    directional_color: [f32; 4],
+    point_positions: [[f32; 4]; MAX_POINT_LIGHTS],
+    point_colors: [[f32; 4]; MAX_POINT_LIGHTS],
+    point_count: [u32; 4],
 }
 
 #[repr(C)]
@@ -635,8 +640,11 @@ impl Renderer {
         });
 
         let light_uniform = LightUniform {
-            direction: [0.0, -1.0, 0.0, 0.0],
-            color: [1.0, 1.0, 1.0, 1.0],
+            directional_direction: [0.0, -1.0, 0.0, 0.0],
+            directional_color: [1.0, 1.0, 1.0, 1.0],
+            point_positions: [[0.0; 4]; MAX_POINT_LIGHTS],
+            point_colors: [[0.0; 4]; MAX_POINT_LIGHTS],
+            point_count: [0, 0, 0, 0],
         };
 
         let light_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -1468,23 +1476,48 @@ impl Renderer {
     }
 
     pub fn update_lighting(&mut self, ecs: &ECS) {
-        if let Some((_position, light)) = ecs.light_components().next() {
-            self.light_uniform.direction = [
-                light.direction[0],
-                light.direction[1],
-                light.direction[2],
-                0.0,
-            ];
-            self.light_uniform.color = [
-                light.color[0],
-                light.color[1],
-                light.color[2],
-                light.intensity,
-            ];
-        } else {
-            self.light_uniform.direction = [0.0, -1.0, 0.0, 0.0];
-            self.light_uniform.color = [1.0, 1.0, 1.0, 0.0];
+        let mut directional = None;
+        let mut point_index = 0;
+        for (position, light) in ecs.light_components() {
+            match light.kind {
+                LightKind::Directional(direction) => {
+                    if directional.is_none() {
+                        directional = Some((direction, light.color, light.intensity));
+                    }
+                }
+                LightKind::Point { radius } => {
+                    if point_index < MAX_POINT_LIGHTS {
+                        self.light_uniform.point_positions[point_index] = [
+                            position.x,
+                            position.y,
+                            position.z,
+                            radius.max(0.001),
+                        ];
+                        self.light_uniform.point_colors[point_index] = [
+                            light.color[0],
+                            light.color[1],
+                            light.color[2],
+                            light.intensity,
+                        ];
+                        point_index += 1;
+                    }
+                }
+            }
         }
+        if let Some((direction, color, intensity)) = directional {
+            self.light_uniform.directional_direction =
+                [direction[0], direction[1], direction[2], 0.0];
+            self.light_uniform.directional_color =
+                [color[0], color[1], color[2], intensity];
+        } else {
+            self.light_uniform.directional_direction = [0.0, -1.0, 0.0, 0.0];
+            self.light_uniform.directional_color = [1.0, 1.0, 1.0, 0.0];
+        }
+        for i in point_index..MAX_POINT_LIGHTS {
+            self.light_uniform.point_positions[i] = [0.0, 0.0, 0.0, 0.0];
+            self.light_uniform.point_colors[i] = [0.0, 0.0, 0.0, 0.0];
+        }
+        self.light_uniform.point_count = [point_index as u32, 0, 0, 0];
         self.queue.write_buffer(
             &self.light_buffer,
             0,

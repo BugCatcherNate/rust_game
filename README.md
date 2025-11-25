@@ -19,6 +19,7 @@ An experiment-sized first-person game built on a lightweight Rust engine. The wo
 - **Modern rendering pipeline** using `wgpu` with `winit` for cross-platform windowing/input and HUD text via the renderer’s UI overlay.
 - **Entity Component System** purpose-built for this demo (`crates/engine/src/ecs`) providing archetype storage, tag queries, and per-component memory breakdown.
 - **Physics & movement** powered by `rapier3d` with dynamic, kinematic, and static bodies synced into the ECS positions.
+- **Lighting model** supporting one directional light plus multiple point lights for emissive props like the patrol orbs.
 - **Automatic collider sizing**: omit `half_extents` in a `PhysicsComponentDefinition` to derive an axis-aligned box from the attached render/terrain geometry.
 - **Audio** playback through `rodio`, supporting ambient scene sounds that loop in the background.
 - **Script hooks and custom systems**: the engine exposes a `CustomSystem` trait plus script bindings so gameplay logic can extend the core update loop without modifying the engine.

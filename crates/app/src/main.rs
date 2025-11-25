@@ -204,9 +204,25 @@ fn patrol_orbs() -> Vec<EntityDefinition> {
 
 fn patrol_orb(name: &str, position: Position, color: [f32; 3]) -> EntityDefinition {
     EntityDefinition::new(name, position).with_components(ComponentDefinition {
-            render: Some(RenderComponentDefinition { color, size: 0.35 }),
-            ..Default::default()
-        })
+        render: Some(RenderComponentDefinition { color, size: 0.35 }),
+        model: Some(ModelComponentDefinition {
+            asset: "assets/cube.obj".to_string(),
+        }),
+        texture: Some(TextureComponentDefinition {
+            asset: "assets/textures/blue.png".to_string(),
+        }),
+        light: Some(LightComponentDefinition {
+            direction: [0.0, -1.0, 0.0],
+            color: [
+                (color[0] + 0.5).min(1.0),
+                (color[1] + 0.5).min(1.0),
+                (color[2] + 0.5).min(1.0),
+            ],
+            intensity: 10.0,
+            point_radius: Some(4.0),
+        }),
+        ..Default::default()
+    })
 }
 
 fn light_sources() -> Vec<EntityDefinition> {
@@ -250,6 +266,7 @@ fn directional_light(
                 direction,
                 color,
                 intensity,
+                point_radius: None,
             }),
             ..Default::default()
         })
