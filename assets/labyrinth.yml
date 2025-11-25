@@ -1,0 +1,434 @@
+environment:
+  background_top: [0.08, 0.11, 0.19]
+  background_bottom: [0.01, 0.01, 0.03]
+  fog_color: [0.04, 0.07, 0.12]
+  fog_density: 0.32
+  background_sound: assets/audio/background.wav
+entities:
+  - name: Explorer
+    position: { x: 0.0, y: 1.6, z: 6.0 }
+    tags: [player, camera]
+    components:
+      camera:
+        yaw: 0.0
+        pitch: 0.0
+        move_speed: 0.05
+        look_sensitivity: 0.0025
+      input:
+        speed: 0.05
+
+  - name: LabyrinthFloor
+    position: { x: 0.0, y: -0.15, z: 0.0 }
+    tags: [terrain]
+    components:
+      terrain:
+        size: 22.0
+        height: 0.3
+        color: [0.12, 0.12, 0.12]
+        texture: assets/textures/ground.png
+
+  - name: ExitObelisk
+    position: { x: 0.0, y: 0.5, z: -7.0 }
+    tags: [exit]
+    components:
+      render:
+        color: [0.2, 0.8, 1.0]
+        size: 0.8
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/blue.png
+
+  - name: KeyAlpha
+    position: { x: 6.0, y: 0.4, z: 4.0 }
+    tags: [collectible, key]
+    components:
+      render:
+        color: [1.0, 0.8, 0.1]
+        size: 0.5
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/blue.png
+
+  - name: KeyBeta
+    position: { x: -6.0, y: 0.4, z: 0.0 }
+    tags: [collectible, key]
+    components:
+      render:
+        color: [0.9, 0.3, 0.8]
+        size: 0.5
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/red.png
+
+  - name: KeyGamma
+    position: { x: 2.0, y: 0.4, z: -6.0 }
+    tags: [collectible, key]
+    components:
+      render:
+        color: [0.3, 0.9, 0.6]
+        size: 0.5
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/ground.png
+
+  - name: HazardCrystal
+    position: { x: 0.0, y: 0.3, z: 0.0 }
+    tags: [prop]
+    components:
+      render:
+        color: [1.0, 0.25, 0.25]
+        size: 0.6
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/red.png
+
+  - name: PatrolOrbNorth
+    position: { x: -3.0, y: 1.0, z: 3.0 }
+    tags: []
+    components:
+      render:
+        color: [0.4, 0.7, 1.0]
+        size: 0.35
+
+  - name: PatrolOrbSouth
+    position: { x: 3.0, y: 1.0, z: -3.5 }
+    tags: []
+    components:
+      render:
+        color: [0.7, 0.4, 1.0]
+        size: 0.35
+
+  - name: Sun
+    position: { x: 5.0, y: 8.0, z: 5.0 }
+    tags: [light]
+    components:
+      light:
+        direction: [-0.3, -1.0, -0.2]
+        color: [1.0, 0.95, 0.85]
+        intensity: 3.5
+
+  - name: AccentLight
+    position: { x: -4.0, y: 6.0, z: -4.0 }
+    tags: [light]
+    components:
+      light:
+        direction: [0.1, -1.0, 0.2]
+        color: [0.5, 0.7, 1.0]
+        intensity: 2.0
+
+  - name: Wall_X-6_Z6
+    position: { x: -6.0, y: 0.6, z: 6.0 }
+    tags: [wall]
+    components:
+      render:
+        color: [0.28, 0.27, 0.25]
+        size: 1.2
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/ground.png
+
+  - name: Wall_X-4_Z6
+    position: { x: -4.0, y: 0.6, z: 6.0 }
+    tags: [wall]
+    components:
+      render:
+        color: [0.28, 0.27, 0.25]
+        size: 1.2
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/ground.png
+
+  - name: Wall_X2_Z6
+    position: { x: 2.0, y: 0.6, z: 6.0 }
+    tags: [wall]
+    components:
+      render:
+        color: [0.28, 0.27, 0.25]
+        size: 1.2
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/ground.png
+
+  - name: Wall_X4_Z6
+    position: { x: 4.0, y: 0.6, z: 6.0 }
+    tags: [wall]
+    components:
+      render:
+        color: [0.28, 0.27, 0.25]
+        size: 1.2
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/ground.png
+
+  - name: Wall_X6_Z6
+    position: { x: 6.0, y: 0.6, z: 6.0 }
+    tags: [wall]
+    components:
+      render:
+        color: [0.28, 0.27, 0.25]
+        size: 1.2
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/ground.png
+
+  - name: Wall_X-6_Z4
+    position: { x: -6.0, y: 0.6, z: 4.0 }
+    tags: [wall]
+    components:
+      render:
+        color: [0.28, 0.27, 0.25]
+        size: 1.2
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/ground.png
+
+  - name: Wall_X-4_Z4
+    position: { x: -4.0, y: 0.6, z: 4.0 }
+    tags: [wall]
+    components:
+      render:
+        color: [0.28, 0.27, 0.25]
+        size: 1.2
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/ground.png
+
+  - name: Wall_X-6_Z2
+    position: { x: -6.0, y: 0.6, z: 2.0 }
+    tags: [wall]
+    components:
+      render:
+        color: [0.28, 0.27, 0.25]
+        size: 1.2
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/ground.png
+
+  - name: Wall_X4_Z2
+    position: { x: 4.0, y: 0.6, z: 2.0 }
+    tags: [wall]
+    components:
+      render:
+        color: [0.28, 0.27, 0.25]
+        size: 1.2
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/ground.png
+
+  - name: Wall_X6_Z2
+    position: { x: 6.0, y: 0.6, z: 2.0 }
+    tags: [wall]
+    components:
+      render:
+        color: [0.28, 0.27, 0.25]
+        size: 1.2
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/ground.png
+
+  - name: Wall_X0_Z0
+    position: { x: 0.0, y: 0.6, z: 0.0 }
+    tags: [wall]
+    components:
+      render:
+        color: [0.28, 0.27, 0.25]
+        size: 1.2
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/ground.png
+
+  - name: Wall_X2_Z0
+    position: { x: 2.0, y: 0.6, z: 0.0 }
+    tags: [wall]
+    components:
+      render:
+        color: [0.28, 0.27, 0.25]
+        size: 1.2
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/ground.png
+
+  - name: Wall_X4_Z0
+    position: { x: 4.0, y: 0.6, z: 0.0 }
+    tags: [wall]
+    components:
+      render:
+        color: [0.28, 0.27, 0.25]
+        size: 1.2
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/ground.png
+
+  - name: Wall_X6_Z0
+    position: { x: 6.0, y: 0.6, z: 0.0 }
+    tags: [wall]
+    components:
+      render:
+        color: [0.28, 0.27, 0.25]
+        size: 1.2
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/ground.png
+
+  - name: Wall_X-6_Z-2
+    position: { x: -6.0, y: 0.6, z: -2.0 }
+    tags: [wall]
+    components:
+      render:
+        color: [0.28, 0.27, 0.25]
+        size: 1.2
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/ground.png
+
+  - name: Wall_X-4_Z-2
+    position: { x: -4.0, y: 0.6, z: -2.0 }
+    tags: [wall]
+    components:
+      render:
+        color: [0.28, 0.27, 0.25]
+        size: 1.2
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/ground.png
+
+  - name: Wall_X6_Z-2
+    position: { x: 6.0, y: 0.6, z: -2.0 }
+    tags: [wall]
+    components:
+      render:
+        color: [0.28, 0.27, 0.25]
+        size: 1.2
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/ground.png
+
+  - name: Wall_X-6_Z-4
+    position: { x: -6.0, y: 0.6, z: -4.0 }
+    tags: [wall]
+    components:
+      render:
+        color: [0.28, 0.27, 0.25]
+        size: 1.2
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/ground.png
+
+  - name: Wall_X-4_Z-4
+    position: { x: -4.0, y: 0.6, z: -4.0 }
+    tags: [wall]
+    components:
+      render:
+        color: [0.28, 0.27, 0.25]
+        size: 1.2
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/ground.png
+
+  - name: Wall_X-2_Z-4
+    position: { x: -2.0, y: 0.6, z: -4.0 }
+    tags: [wall]
+    components:
+      render:
+        color: [0.28, 0.27, 0.25]
+        size: 1.2
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/ground.png
+
+  - name: Wall_X6_Z-4
+    position: { x: 6.0, y: 0.6, z: -4.0 }
+    tags: [wall]
+    components:
+      render:
+        color: [0.28, 0.27, 0.25]
+        size: 1.2
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/ground.png
+
+  - name: Wall_X-6_Z-6
+    position: { x: -6.0, y: 0.6, z: -6.0 }
+    tags: [wall]
+    components:
+      render:
+        color: [0.28, 0.27, 0.25]
+        size: 1.2
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/ground.png
+
+  - name: Wall_X-4_Z-6
+    position: { x: -4.0, y: 0.6, z: -6.0 }
+    tags: [wall]
+    components:
+      render:
+        color: [0.28, 0.27, 0.25]
+        size: 1.2
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/ground.png
+
+  - name: Wall_X-2_Z-6
+    position: { x: -2.0, y: 0.6, z: -6.0 }
+    tags: [wall]
+    components:
+      render:
+        color: [0.28, 0.27, 0.25]
+        size: 1.2
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/ground.png
+
+  - name: Wall_X4_Z-6
+    position: { x: 4.0, y: 0.6, z: -6.0 }
+    tags: [wall]
+    components:
+      render:
+        color: [0.28, 0.27, 0.25]
+        size: 1.2
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/ground.png
+
+  - name: Wall_X6_Z-6
+    position: { x: 6.0, y: 0.6, z: -6.0 }
+    tags: [wall]
+    components:
+      render:
+        color: [0.28, 0.27, 0.25]
+        size: 1.2
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/ground.png

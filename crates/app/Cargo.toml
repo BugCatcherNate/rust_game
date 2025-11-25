@@ -1,0 +1,9 @@
+[package]
+name = "rust_game_app"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+rust_game = { path = "../engine" }
+env_logger = { workspace = true }
+log = { workspace = true }

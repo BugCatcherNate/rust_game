@@ -1,0 +1,112 @@
+environment:
+  background_top: [0.26, 0.34, 0.52]
+  background_bottom: [0.02, 0.02, 0.05]
+  fog_color: [0.22, 0.27, 0.33]
+  fog_density: 0.15
+  background_sound: assets/audio/background.wav
+entities:
+  - name: Nathan
+    position: { x: 0.0, y: 1.6, z: 3.0 }
+    tags: [player, camera]
+    components:
+      camera:
+        yaw: 0.0
+        pitch: 0.0
+        move_speed: 0.05
+        look_sensitivity: 0.0025
+      input:
+        speed: 0.05
+  - name: Crate
+    position: { x: 1.5, y: 0.0, z: 0.5 }
+    tags: [prop, collectible]
+    components:
+      render:
+        color: [0.2, 0.8, 1.0]
+        size: 0.75
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/blue.png
+  - name: Meadow
+    position: { x: 0.0, y: -0.1, z: 0.0 }
+    tags: [terrain]
+    components:
+      terrain:
+        size: 18.0
+        height: 0.2
+        color: [1.0, 1.0, 1.0]
+        texture: assets/textures/grass.jpg
+  - name: Obelisk
+    position: { x: -2.5, y: 0.0, z: -1.5 }
+    tags: [prop, collectible]
+    components:
+      render:
+        color: [0.4, 0.35, 0.3]
+        size: 1.2
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/ground.png
+  - name: Portal
+    position: { x: 3.5, y: 0.0, z: -2.0 }
+    tags: [portal]
+    components:
+      render:
+        color: [0.7, 0.1, 0.9]
+        size: 0.5
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/blue.png
+  - name: Sun
+    position: { x: 2.0, y: 4.0, z: 2.0 }
+    tags: [light]
+    components:
+      light:
+        direction: [0.3, -1.0, -0.2]
+        color: [1.0, 0.95, 0.8]
+        intensity: 3.0
+  - name: AccentLight
+    position: { x: -1.0, y: 3.0, z: -2.0 }
+    tags: [light]
+    components:
+      light:
+        direction: [-0.2, -1.0, 0.1]
+        color: [0.6, 0.7, 1.0]
+        intensity: 1.5
+  - name: HazardSpikes
+    position: { x: 2.0, y: 0.1, z: -1.0 }
+    tags: [prop]
+    components:
+      render:
+        color: [1.0, 0.3, 0.2]
+        size: 0.4
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/red.png
+  - name: FloatingPlatform
+    position: { x: -3.0, y: 1.2, z: 1.8 }
+    tags: []
+    components:
+      render:
+        color: [0.8, 0.7, 0.4]
+        size: 1.5
+      model:
+        asset: assets/cube.obj
+      texture:
+        asset: assets/textures/ground.png
+  - name: PatrolMarkerA
+    position: { x: 0.5, y: 0.5, z: -3.5 }
+    tags: []
+    components:
+      render:
+        color: [0.3, 0.9, 0.5]
+        size: 0.3
+  - name: PatrolMarkerB
+    position: { x: -1.5, y: 0.5, z: -3.0 }
+    tags: []
+    components:
+      render:
+        color: [0.2, 0.6, 1.0]
+        size: 0.3
