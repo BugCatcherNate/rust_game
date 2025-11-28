@@ -16,14 +16,12 @@ An experiment-sized first-person game built on a lightweight Rust engine. The wo
 
 ## Features
 
-- **Modern rendering pipeline** using `wgpu` with `winit` for cross-platform windowing/input and HUD text via the renderer’s UI overlay.
-- **Entity Component System** purpose-built for this demo (`crates/engine/src/ecs`) providing archetype storage, tag queries, and per-component memory breakdown.
-- **Physics & movement** powered by `rapier3d` with dynamic, kinematic, and static bodies synced into the ECS positions.
-- **Lighting model** supporting one directional light plus multiple point lights for emissive props like the patrol orbs.
-- **Automatic collider sizing**: omit `half_extents` in a `PhysicsComponentDefinition` to derive an axis-aligned box from the attached render/terrain geometry.
-- **Audio** playback through `rodio`, supporting ambient scene sounds that loop in the background.
-- **Script hooks and custom systems**: the engine exposes a `CustomSystem` trait plus script bindings so gameplay logic can extend the core update loop without modifying the engine.
-- **Data-driven scenes** assembled through `SceneDefinition`/`SceneLibrary` (Rust) or the YAML helpers under `assets/`, showing how to go from authored data to runtime ECS entities.
+- **Modern rendering pipeline** using `wgpu`/`winit` with HUD overlays and debug-line rendering for live ray-trace visualization.
+- **Entity Component System** (`crates/engine/src/ecs`) providing archetype storage, tag queries, per-component memory reporting, and a global event bus.
+- **Physics & interaction** powered by `rapier3d`, now with ray casts exposed through the engine for gameplay queries (shooting, selection).
+- **Shooting gameplay**: left-click fires a physics ray, renders a debug trace, and emits events processed by `ShootingSystem` to destroy tagged targets.
+- **Custom systems & scripting** keep gameplay separated from the engine loop; systems can subscribe to events like `ShotEvent` without tight coupling.
+- **Audio & scene data**: ambient sounds via `rodio`, plus data-driven scenes using `SceneDefinition` builders or YAML assets.
 
 ## Building & Running
 
@@ -73,16 +71,15 @@ impl CustomSystem for MySystem {
 }
 ```
 
-Register systems via `GameConfig::with_custom_system`. The sample game installs `CollectibleSystem` and `LabyrinthSystem` (`crates/app/src/main.rs`) to drive quest logic.
+Register systems via `GameConfig::with_custom_system`. The sample game installs `ShootingSystem` (`crates/app/src/main.rs`) which listens for `ShotEvent`s, updates HUD text, and removes hit targets.
+
+### Events & Message Bus
+
+Systems can publish gameplay events for other systems to react to without direct knowledge of each other. Use `ecs.emit_event(MyEvent { ... })` to enqueue an event and `ecs.drain_events::<MyEvent>()` to consume all pending events of that type (consumption clears them for that frame). `CollectibleSystem` emits events that `LabyrinthSystem` listens for to update quest progress, demonstrating how the bus fits into the update loop.
 
 ## Game-Specific Logic
 
-`crates/app/src/main.rs` builds the labyrinth scene in Rust code. Highlights:
-
-- The `Explorer` entity is tagged with `player` and `camera`, has FPS-style camera/input components, and a dynamic physics body.
-- Terrain, exit obelisk, hazard crystal, patrol orbs, lighting, and walls are composed through helper functions (`cube_with_texture`, `directional_light`, etc.).
-- `CollectibleSystem` tracks tagged collectibles and removes them from the ECS once the player approaches them, updating HUD text.
-- `LabyrinthSystem` monitors key entities, unlocks the exit after all are collected, and displays progress/mission status on the HUD.
+`crates/app/src/main.rs` builds a minimal combat sandbox: a player entity with FPS controls, a target with a collider, basic terrain, and a sun light. `ShootingSystem` consumes shot events to destroy anything tagged `target`, keeping a running HUD tally. The renderer overlays each ray as a debug line so you can see exactly where shots travel.
 
 Additional YAML scenes in `assets/scene.yml`, `assets/other_scene.yml`, and `assets/labyrinth.yml` showcase a data-driven format for entities that mirrors the Rust builders.
 

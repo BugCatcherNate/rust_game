@@ -284,6 +284,25 @@ impl InstanceRaw {
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
+struct DebugLineVertex {
+    position: [f32; 3],
+    color: [f32; 3],
+}
+
+impl DebugLineVertex {
+    fn layout<'a>() -> wgpu::VertexBufferLayout<'a> {
+        const ATTRIBUTES: [wgpu::VertexAttribute; 2] =
+            wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x3];
+        wgpu::VertexBufferLayout {
+            array_stride: std::mem::size_of::<DebugLineVertex>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Vertex,
+            attributes: &ATTRIBUTES,
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
 struct UiVertex {
     position: [f32; 3],
     uv: [f32; 2],
@@ -466,6 +485,13 @@ impl GpuMemoryUsage {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct DebugLine {
+    pub start: [f32; 3],
+    pub end: [f32; 3],
+    pub color: [f32; 3],
+}
+
 pub struct Renderer {
     _window: Arc<Window>,
     surface: wgpu::Surface<'static>,
@@ -501,6 +527,10 @@ pub struct Renderer {
     models: HashMap<ModelKey, ModelEntry>,
     camera_position: [f32; 3],
     instance_pool: InstanceBufferPool,
+    debug_line_pipeline: wgpu::RenderPipeline,
+    debug_line_buffer: Option<wgpu::Buffer>,
+    debug_line_capacity: usize,
+    debug_line_vertex_count: u32,
 }
 
 impl Renderer {
@@ -864,6 +894,54 @@ impl Renderer {
         });
 
         let depth_texture = create_depth_texture(&device, &config);
+        let debug_line_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Debug Line Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/debug_line.wgsl").into()),
+        });
+        let debug_line_pipeline_layout =
+            device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("Debug Line Pipeline Layout"),
+                bind_group_layouts: &[&camera_bind_group_layout],
+                push_constant_ranges: &[],
+            });
+        let debug_line_pipeline =
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("Debug Line Pipeline"),
+                layout: Some(&debug_line_pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &debug_line_shader,
+                    entry_point: Some("vs_main"),
+                    buffers: &[DebugLineVertex::layout()],
+                    compilation_options: Default::default(),
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &debug_line_shader,
+                    entry_point: Some("fs_main"),
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: config.format,
+                        blend: Some(wgpu::BlendState::REPLACE),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                    compilation_options: Default::default(),
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::LineList,
+                    strip_index_format: None,
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: None,
+                    ..Default::default()
+                },
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: DEPTH_FORMAT,
+                    depth_write_enabled: false,
+                    depth_compare: wgpu::CompareFunction::LessEqual,
+                    stencil: Default::default(),
+                    bias: Default::default(),
+                }),
+                multisample: wgpu::MultisampleState::default(),
+                multiview: None,
+                cache: None,
+            });
 
         let mut renderer = Self {
             _window: window,
@@ -900,6 +978,10 @@ impl Renderer {
             models: HashMap::new(),
             camera_position: [initial_eye.x, initial_eye.y, initial_eye.z],
             instance_pool: InstanceBufferPool::new(),
+            debug_line_pipeline,
+            debug_line_buffer: None,
+            debug_line_capacity: 0,
+            debug_line_vertex_count: 0,
         };
 
         renderer.set_background_colors(DEFAULT_BG_TOP, DEFAULT_BG_BOTTOM);
@@ -919,6 +1001,41 @@ impl Renderer {
             .instance_pool
             .total_memory(std::mem::size_of::<InstanceRaw>());
         model_sum + texture_sum + pooled_instances
+    }
+
+    pub fn set_debug_lines(&mut self, lines: &[DebugLine]) {
+        let vertex_count = lines.len() * 2;
+        if vertex_count == 0 {
+            self.debug_line_vertex_count = 0;
+            return;
+        }
+        if self.debug_line_capacity < vertex_count {
+            let capacity = vertex_count.next_power_of_two().max(2);
+            let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("Debug Line Buffer"),
+                size: (capacity * std::mem::size_of::<DebugLineVertex>()) as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+            self.debug_line_buffer = Some(buffer);
+            self.debug_line_capacity = capacity;
+        }
+        let mut vertices = Vec::with_capacity(vertex_count);
+        for line in lines {
+            vertices.push(DebugLineVertex {
+                position: line.start,
+                color: line.color,
+            });
+            vertices.push(DebugLineVertex {
+                position: line.end,
+                color: line.color,
+            });
+        }
+        if let Some(buffer) = &self.debug_line_buffer {
+            self.queue
+                .write_buffer(buffer, 0, bytemuck::cast_slice(&vertices));
+            self.debug_line_vertex_count = vertex_count as u32;
+        }
     }
 
     pub fn resize(&mut self, new_size: PhysicalSize<u32>) {
@@ -1620,6 +1737,36 @@ impl Renderer {
                 render_pass
                     .set_index_buffer(entry.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 render_pass.draw_indexed(0..entry.index_count, 0, 0..entry.instance_count);
+            }
+        }
+
+        if self.debug_line_vertex_count > 0 {
+            if let Some(buffer) = &self.debug_line_buffer {
+                let mut line_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("Debug Line Pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                        view: &self.depth_texture.view,
+                        depth_ops: Some(wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        }),
+                        stencil_ops: None,
+                    }),
+                    occlusion_query_set: None,
+                    timestamp_writes: None,
+                });
+                line_pass.set_pipeline(&self.debug_line_pipeline);
+                line_pass.set_bind_group(0, &self.camera_bind_group, &[]);
+                line_pass.set_vertex_buffer(0, buffer.slice(..));
+                line_pass.draw(0..self.debug_line_vertex_count, 0..1);
             }
         }
 

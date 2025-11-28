@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::collections::HashMap;
 
 use crate::components::{Position, RenderComponent};
@@ -30,13 +31,14 @@ pub struct SceneSnapshotEntry {
     pub position: Position,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum ScriptCommand {
     LoadScene(String),
     RemoveComponent {
         entity_id: u32,
         component: ComponentKind,
     },
+    EmitEvent(Box<dyn Any + Send>),
 }
 
 pub trait ScriptBehavior {

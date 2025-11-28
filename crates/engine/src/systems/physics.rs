@@ -5,6 +5,7 @@ use rapier3d::prelude::*;
 use crate::archetypes::Archetype;
 use crate::components::{PhysicsBodyType, PhysicsComponent, Position};
 use crate::ecs::ECS;
+use crate::math::normalize_vec3;
 
 pub struct PhysicsSystem {
     pipeline: PhysicsPipeline,
@@ -20,10 +21,20 @@ pub struct PhysicsSystem {
     multibody_joints: MultibodyJointSet,
     query_pipeline: QueryPipeline,
     entity_to_body: HashMap<u32, RigidBodyHandle>,
+    collider_to_entity: HashMap<ColliderHandle, u32>,
+}
+
+#[derive(Debug, Clone)]
+pub struct RaycastHit {
+    pub entity_id: u32,
+    pub toi: f32,
+    pub point: [f32; 3],
+    pub normal: [f32; 3],
 }
 
 impl PhysicsSystem {
     const JUMP_SPEED: f32 = 5.5;
+    const JUMP_VELOCITY_EPSILON: f32 = 0.1;
     pub fn new() -> Self {
         Self {
             pipeline: PhysicsPipeline::new(),
@@ -42,6 +53,7 @@ impl PhysicsSystem {
             multibody_joints: MultibodyJointSet::new(),
             query_pipeline: QueryPipeline::new(),
             entity_to_body: HashMap::new(),
+            collider_to_entity: HashMap::new(),
         }
     }
 
@@ -73,6 +85,7 @@ impl PhysicsSystem {
         self.multibody_joints = MultibodyJointSet::new();
         self.query_pipeline = QueryPipeline::new();
         self.entity_to_body.clear();
+        self.collider_to_entity.clear();
     }
 
     fn collect_active_entities(archetypes: &[Archetype]) -> HashSet<u32> {
@@ -109,6 +122,7 @@ impl PhysicsSystem {
                     );
                 }
             }
+            self.remove_entity_colliders(entity_id);
         }
     }
 
@@ -142,6 +156,7 @@ impl PhysicsSystem {
             }
             physics.body_handle = None;
             physics.collider_handle = None;
+            self.remove_entity_colliders(entity_id);
         }
 
         let body_handle = self.bodies.insert(physics.build_body(position));
@@ -153,6 +168,7 @@ impl PhysicsSystem {
         physics.body_handle = Some(body_handle);
         physics.collider_handle = Some(collider_handle);
         self.entity_to_body.insert(entity_id, body_handle);
+        self.collider_to_entity.insert(collider_handle, entity_id);
     }
 
     fn apply_input_velocity(&mut self, ecs: &mut ECS) {
@@ -176,7 +192,10 @@ impl PhysicsSystem {
 
                 match component.body_type {
                     PhysicsBodyType::Dynamic => {
-                        let jump = component.grounded && input.take_jump_request();
+                        let jump_request = input.take_jump_request();
+                        let grounded = component.grounded
+                            || body.linvel().y.abs() < Self::JUMP_VELOCITY_EPSILON;
+                        let jump = jump_request && grounded;
                         let dir = input.direction;
                         let speed_per_sec = input.speed / self.integration_parameters.dt;
                         let current_y = body.linvel().y;
@@ -263,6 +282,49 @@ impl PhysicsSystem {
             &(),
             &(),
         );
+    }
+
+    fn remove_entity_colliders(&mut self, entity_id: u32) {
+        self.collider_to_entity
+            .retain(|_, mapped| *mapped != entity_id);
+    }
+
+    pub fn cast_ray(
+        &self,
+        origin: [f32; 3],
+        direction: [f32; 3],
+        max_toi: f32,
+    ) -> Option<RaycastHit> {
+        if direction == [0.0, 0.0, 0.0] {
+            return None;
+        }
+        let dir = normalize_vec3(direction);
+        let ray = Ray::new(point![origin[0], origin[1], origin[2]], vector![dir[0], dir[1], dir[2]]);
+        let filter = QueryFilter::default();
+        self.query_pipeline
+            .cast_ray_and_get_normal(
+                &self.bodies,
+                &self.colliders,
+                &ray,
+                max_toi,
+                true,
+                filter,
+            )
+            .and_then(|(handle, intersection)| {
+                let entity_id = *self.collider_to_entity.get(&handle)?;
+                let toi = intersection.time_of_impact;
+                let point = [
+                    origin[0] + dir[0] * toi,
+                    origin[1] + dir[1] * toi,
+                    origin[2] + dir[2] * toi,
+                ];
+                Some(RaycastHit {
+                    entity_id,
+                    toi,
+                    point,
+                    normal: [intersection.normal.x, intersection.normal.y, intersection.normal.z],
+                })
+            })
     }
 
     fn sync_positions_from_bodies(&mut self, ecs: &mut ECS) {

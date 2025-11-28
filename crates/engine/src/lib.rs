@@ -3,6 +3,7 @@ pub mod archetypes;
 pub mod components;
 pub mod ecs;
 pub mod modules;
+pub mod math;
 pub mod rendering;
 pub mod scene;
 pub mod scripts;

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use crate::components::{CameraComponent, Position, ScriptComponent};
 use crate::ecs::{ComponentKind, ECS};
-use crate::rendering::Renderer;
+use crate::rendering::{DebugLine, Renderer};
 use crate::scene::{self, SceneLibrary, SceneLookupError};
 use crate::scripts::{ScriptCommand, ScriptRegistry};
 use crate::systems::{
@@ -15,7 +15,7 @@ use log::{info, warn};
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
 use winit::application::ApplicationHandler;
 use winit::error::EventLoopError;
-use winit::event::{DeviceEvent, DeviceId, WindowEvent};
+use winit::event::{DeviceEvent, DeviceId, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{CursorGrabMode, Window, WindowAttributes, WindowId};
@@ -28,6 +28,20 @@ pub struct GameConfig {
     pub script_registry: Arc<ScriptRegistry>,
     pub script_bindings: Vec<ScriptBinding>,
     pub custom_systems: Vec<Box<dyn CustomSystem>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ShotEvent {
+    pub origin: [f32; 3],
+    pub direction: [f32; 3],
+    pub hit: Option<ShotEventHit>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ShotEventHit {
+    pub entity_id: u32,
+    pub point: [f32; 3],
+    pub normal: [f32; 3],
 }
 
 impl GameConfig {
@@ -159,6 +173,7 @@ struct GameApp {
     script_bindings: Vec<ScriptBinding>,
     custom_systems: Vec<Box<dyn CustomSystem>>,
     custom_command_buffer: Vec<ScriptCommand>,
+    debug_lines: Vec<DebugLine>,
 }
 
 impl GameApp {
@@ -195,6 +210,7 @@ impl GameApp {
             script_bindings,
             custom_systems,
             custom_command_buffer: Vec::new(),
+            debug_lines: Vec::new(),
         };
         app.reload_scene(&initial_scene)
             .unwrap_or_else(|err| panic!("Failed to load scene '{}': {}", initial_scene, err));
@@ -271,6 +287,37 @@ impl GameApp {
         }
         self.audio_handle = None;
         self.audio_stream = None;
+    }
+
+    fn lock_cursor(&self) {
+        if let Some(window) = &self.window {
+            let modes = [CursorGrabMode::Locked, CursorGrabMode::Confined];
+            let mut locked = false;
+            for mode in modes {
+                match window.set_cursor_grab(mode) {
+                    Ok(()) => {
+                        locked = true;
+                        break;
+                    }
+                    Err(err) => {
+                        warn!("Failed to set cursor grab mode {:?}: {}", mode, err);
+                    }
+                }
+            }
+            if locked {
+                window.set_cursor_visible(false);
+            } else {
+                warn!("Falling back to visible cursor; grab not supported");
+                window.set_cursor_visible(true);
+            }
+        }
+    }
+
+    fn unlock_cursor(&self) {
+        if let Some(window) = &self.window {
+            let _ = window.set_cursor_grab(CursorGrabMode::None);
+            window.set_cursor_visible(true);
+        }
     }
 
     fn log_entity_state_once(&mut self) {
@@ -396,6 +443,66 @@ impl GameApp {
         self.start_background_audio();
     }
 
+    fn handle_fire(&mut self) {
+        let Some((position, _)) = self.ecs.find_entity_components(self.camera_id) else {
+            return;
+        };
+        let Some(camera) = self.ecs.camera_component(self.camera_id) else {
+            return;
+        };
+        let origin = [position.x, position.y, position.z];
+        let direction = Self::camera_forward(camera);
+        let mut ray_origin = origin;
+        for i in 0..3 {
+            ray_origin[i] += direction[i] * 2.0;
+        }
+        let max_distance = 100.0;
+        let mut line_end = [
+            origin[0] + direction[0] * max_distance,
+            origin[1] + direction[1] * max_distance,
+            origin[2] + direction[2] * max_distance,
+        ];
+        let mut line_color = [1.0, 1.0, 0.2];
+        let mut hit_result = None;
+        if let Some(hit) = self
+            .physics_system
+            .cast_ray(ray_origin, direction, max_distance)
+        {
+            line_end = hit.point;
+            line_color = [1.0, 0.2, 0.2];
+            info!(
+                "Shot hit entity {} at ({:.2}, {:.2}, {:.2})",
+                hit.entity_id, hit.point[0], hit.point[1], hit.point[2]
+            );
+            hit_result = Some(ShotEventHit {
+                entity_id: hit.entity_id,
+                point: hit.point,
+                normal: hit.normal,
+            });
+        } else {
+            info!("Shot missed");
+        }
+        self.debug_lines.push(DebugLine {
+            start: origin,
+            end: line_end,
+            color: line_color,
+        });
+        self.ecs.emit_event(ShotEvent {
+            origin,
+            direction,
+            hit: hit_result,
+        });
+    }
+
+    fn camera_forward(camera: &CameraComponent) -> [f32; 3] {
+        let cos_pitch = camera.pitch.cos();
+        [
+            cos_pitch * camera.yaw.sin(),
+            camera.pitch.sin(),
+            -cos_pitch * camera.yaw.cos(),
+        ]
+    }
+
     fn update_renderer_scene(&mut self) {
         if let Some(renderer) = self.renderer.as_mut() {
             renderer.set_background_colors(
@@ -466,6 +573,9 @@ impl GameApp {
                 } => {
                     self.apply_component_removal(entity_id, component);
                 }
+                ScriptCommand::EmitEvent(event) => {
+                    self.ecs.emit_boxed_event(event);
+                }
             }
         }
         scene_changed
@@ -500,6 +610,7 @@ impl ApplicationHandler for GameApp {
 
         self.update_renderer_scene();
         self.start_background_audio();
+        self.lock_cursor();
     }
 
     fn window_event(
@@ -542,16 +653,38 @@ impl ApplicationHandler for GameApp {
                     }
                 }
             }
+            WindowEvent::MouseInput { state, button, .. } => {
+                if button == MouseButton::Left
+                    && state == winit::event::ElementState::Pressed
+                {
+                    self.handle_fire();
+                }
+            }
+            WindowEvent::Focused(focused) => {
+                if focused {
+                    self.lock_cursor();
+                } else {
+                    self.unlock_cursor();
+                }
+            }
             WindowEvent::RedrawRequested => {
                 let delta = self.pending_mouse_delta;
                 self.pending_mouse_delta = (0.0, 0.0);
                 CameraSystem::apply_mouse_delta(&mut self.ecs, self.camera_id, delta);
                 InputSystem::update_entity_from_keys(
                     &mut self.ecs,
-                    self.camera_id,
+                    self.player_id,
                     &self.pressed_keys,
                     &self.just_pressed,
                 );
+                if self.camera_id != self.player_id {
+                    InputSystem::update_entity_from_keys(
+                        &mut self.ecs,
+                        self.camera_id,
+                        &self.pressed_keys,
+                        &self.just_pressed,
+                    );
+                }
                 self.just_pressed.clear();
                 MovementSystem::update(&mut self.ecs);
                 self.physics_system.update(&mut self.ecs);
@@ -568,6 +701,7 @@ impl ApplicationHandler for GameApp {
                 let _scene_changed = self.process_commands(commands);
                 if let Some(renderer) = self.renderer.as_mut() {
                     RenderPrepSystem::update(renderer, &self.ecs, Some(self.camera_id));
+                    renderer.set_debug_lines(&self.debug_lines);
                     if let Some((position, _)) = self.ecs.find_entity_components(self.camera_id) {
                         if let Some(camera) = self.ecs.camera_component(self.camera_id) {
                             let default_text = Self::build_hud_text(position, camera);
@@ -591,6 +725,7 @@ impl ApplicationHandler for GameApp {
                         self.handle_render_error(event_loop, err);
                     }
                 }
+                self.debug_lines.clear();
                 self.log_entity_state_once();
             }
             _ => {}
@@ -638,7 +773,5 @@ fn create_game_window(event_loop: &ActiveEventLoop, title: &str) -> Arc<Window> 
             )
             .expect("Failed to create window"),
     );
-    let _ = window.set_cursor_grab(CursorGrabMode::Locked);
-    window.set_cursor_visible(false);
     window
 }

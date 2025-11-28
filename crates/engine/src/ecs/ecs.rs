@@ -4,9 +4,11 @@ use crate::components::{
     Position, RenderComponent, ScriptComponent, TerrainComponent, TextureComponent,
 };
 use crate::ecs::entity_manager::EntityManager;
+use crate::ecs::event_bus::EventBus;
 use crate::ecs::tag_manager::TagManager;
 use crate::ecs::{ComponentKind, ComponentSignature};
 use log::debug;
+use std::any::Any;
 use std::collections::HashMap;
 
 pub struct ECS {
@@ -15,6 +17,7 @@ pub struct ECS {
     signature_to_index: HashMap<ComponentSignature, usize>,
     pub entity_manager: EntityManager,
     pub tag_manager: TagManager,
+    event_bus: EventBus,
 }
 
 impl ECS {
@@ -25,7 +28,34 @@ impl ECS {
             signature_to_index: HashMap::new(),
             entity_manager: EntityManager::new(),
             tag_manager: TagManager::new(),
+            event_bus: EventBus::new(),
         }
+    }
+
+    pub fn event_bus(&self) -> &EventBus {
+        &self.event_bus
+    }
+
+    pub fn event_bus_mut(&mut self) -> &mut EventBus {
+        &mut self.event_bus
+    }
+
+    pub fn emit_event<E>(&mut self, event: E)
+    where
+        E: 'static + Send,
+    {
+        self.event_bus.publish(event);
+    }
+
+    pub fn emit_boxed_event(&mut self, event: Box<dyn Any + Send>) {
+        self.event_bus.publish_boxed(event);
+    }
+
+    pub fn drain_events<E>(&mut self) -> Vec<E>
+    where
+        E: 'static + Send,
+    {
+        self.event_bus.drain::<E>()
     }
 
     pub fn add_entity(&mut self, position: Position, name: Name) -> u32 {
@@ -250,6 +280,17 @@ impl ECS {
             if let Some(archetype) = self.archetypes.get_mut(archetype_index) {
                 if let Some(cameras) = archetype.cameras.as_mut() {
                     return cameras.get_mut(index_within_archetype);
+                }
+            }
+        }
+        None
+    }
+
+    pub fn light_component_mut(&mut self, id: u32) -> Option<&mut LightComponent> {
+        if let Some(&(archetype_index, index_within_archetype)) = self.entity_to_location.get(&id) {
+            if let Some(archetype) = self.archetypes.get_mut(archetype_index) {
+                if let Some(lights) = archetype.lights.as_mut() {
+                    return lights.get_mut(index_within_archetype);
                 }
             }
         }

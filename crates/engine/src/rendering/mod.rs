@@ -1,3 +1,3 @@
 pub mod renderer;
 
-pub use renderer::{GpuMemoryUsage, Renderer};
+pub use renderer::{DebugLine, GpuMemoryUsage, Renderer};

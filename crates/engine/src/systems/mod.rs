@@ -8,6 +8,6 @@ pub mod scripting;
 pub use camera::CameraSystem;
 pub use input::InputSystem;
 pub use movement::MovementSystem;
-pub use physics::PhysicsSystem;
+pub use physics::{PhysicsSystem, RaycastHit};
 pub use rendering::RenderPrepSystem;
 pub use scripting::ScriptingSystem;
