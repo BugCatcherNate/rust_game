@@ -351,6 +351,39 @@ struct TextureEntry {
     byte_size: usize,
 }
 
+#[derive(Clone, Copy)]
+enum UiOverlayKind {
+    Top,
+    Bottom,
+}
+
+struct UiOverlay {
+    text: String,
+    vertex_buffer: Option<wgpu::Buffer>,
+    vertex_count: u32,
+    texture: Option<TextureEntry>,
+    texture_size: (u32, u32),
+}
+
+impl UiOverlay {
+    fn new() -> Self {
+        Self {
+            text: String::new(),
+            vertex_buffer: None,
+            vertex_count: 0,
+            texture: None,
+            texture_size: (0, 0),
+        }
+    }
+
+    fn reset_geometry(&mut self) {
+        self.vertex_buffer = None;
+        self.vertex_count = 0;
+        self.texture = None;
+        self.texture_size = (0, 0);
+    }
+}
+
 struct ModelEntry {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
@@ -515,11 +548,8 @@ pub struct Renderer {
     background_buffer: wgpu::Buffer,
     background_bind_group: wgpu::BindGroup,
     ui_pipeline: wgpu::RenderPipeline,
-    ui_vertex_buffer: Option<wgpu::Buffer>,
-    ui_vertex_count: u32,
-    ui_text_texture: Option<TextureEntry>,
-    ui_texture_size: (u32, u32),
-    ui_text: String,
+    ui_top: UiOverlay,
+    ui_bottom: UiOverlay,
     clear_color: [f32; 3],
     depth_texture: DepthTexture,
     projection: Mat4,
@@ -966,11 +996,8 @@ impl Renderer {
             background_vertex_buffer,
             background_buffer,
             background_bind_group,
-            ui_vertex_buffer: None,
-            ui_vertex_count: 0,
-            ui_text_texture: None,
-            ui_texture_size: (0, 0),
-            ui_text: String::new(),
+            ui_top: UiOverlay::new(),
+            ui_bottom: UiOverlay::new(),
             clear_color: DEFAULT_BG_BOTTOM,
             depth_texture,
             projection,
@@ -1047,7 +1074,8 @@ impl Renderer {
             self.depth_texture = create_depth_texture(&self.device, &self.config);
             self.projection = build_projection_matrix(self.size);
             self.update_camera_uniform();
-            self.rebuild_ui_vertices();
+            self.rebuild_ui_vertices_for(UiOverlayKind::Top);
+            self.rebuild_ui_vertices_for(UiOverlayKind::Bottom);
         }
     }
 
@@ -1353,16 +1381,22 @@ impl Renderer {
         }
     }
 
-    fn rebuild_ui_text_texture(&mut self) {
-        if self.ui_text.trim().is_empty() {
-            self.ui_text_texture = None;
-            self.ui_vertex_buffer = None;
-            self.ui_vertex_count = 0;
-            self.ui_texture_size = (0, 0);
+    fn rebuild_ui_overlay(&mut self, kind: UiOverlayKind) {
+        let text_empty = {
+            let overlay = self.overlay(kind);
+            overlay.text.trim().is_empty()
+        };
+        if text_empty {
+            self.overlay_mut(kind).reset_geometry();
             return;
         }
 
-        if let Some((data, width, height)) = Self::rasterize_ui_text(&self.ui_text) {
+        let text = {
+            let overlay = self.overlay(kind);
+            overlay.text.clone()
+        };
+
+        if let Some((data, width, height)) = Self::rasterize_ui_text(&text) {
             let texture = Self::create_texture_from_rgba(
                 &self.device,
                 &self.queue,
@@ -1372,42 +1406,71 @@ impl Renderer {
                 &data,
                 Some("UI Text Texture"),
             );
-            self.ui_text_texture = Some(texture);
-            self.ui_texture_size = (width, height);
-            self.rebuild_ui_vertices();
+            {
+                let overlay = self.overlay_mut(kind);
+                overlay.texture = Some(texture);
+                overlay.texture_size = (width, height);
+            }
+            self.rebuild_ui_vertices_for(kind);
         } else {
-            self.ui_text_texture = None;
-            self.ui_vertex_buffer = None;
-            self.ui_vertex_count = 0;
-            self.ui_texture_size = (0, 0);
+            self.overlay_mut(kind).reset_geometry();
         }
     }
 
-    fn rebuild_ui_vertices(&mut self) {
-        let (tex_w, tex_h) = self.ui_texture_size;
+    fn rebuild_ui_vertices_for(&mut self, kind: UiOverlayKind) {
+        let (tex_w, tex_h) = {
+            let overlay = self.overlay(kind);
+            overlay.texture_size
+        };
         if tex_w == 0 || tex_h == 0 {
-            self.ui_vertex_buffer = None;
-            self.ui_vertex_count = 0;
+            self.overlay_mut(kind).reset_geometry();
             return;
         }
 
         let width = self.size.width.max(1) as f32;
         let height = self.size.height.max(1) as f32;
-        let x0 = UI_TEXT_MARGIN_X;
-        let y0 = UI_TEXT_MARGIN_Y;
+        let x0 = UI_TEXT_MARGIN_X.max(0.0);
         let x1 = x0 + tex_w as f32;
-        let y1 = y0 + tex_h as f32;
+        let (y0, y1) = match kind {
+            UiOverlayKind::Top => {
+                let y0 = UI_TEXT_MARGIN_Y.max(0.0);
+                (y0, y0 + tex_h as f32)
+            }
+            UiOverlayKind::Bottom => {
+                let max_y = (height - UI_TEXT_MARGIN_Y).max(UI_TEXT_MARGIN_Y + tex_h as f32);
+                let y0 = (max_y - tex_h as f32).max(UI_TEXT_MARGIN_Y);
+                (y0, y0 + tex_h as f32)
+            }
+        };
 
         let vertices = Self::build_ui_quad_vertices(x0, y0, x1, y1, width, height);
-        self.ui_vertex_count = vertices.len() as u32;
         let buffer = self
             .device
             .create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("UI Vertex Buffer"),
+                label: Some(match kind {
+                    UiOverlayKind::Top => "UI Vertex Buffer",
+                    UiOverlayKind::Bottom => "UI Bottom Vertex Buffer",
+                }),
                 contents: bytemuck::cast_slice(&vertices),
                 usage: wgpu::BufferUsages::VERTEX,
             });
-        self.ui_vertex_buffer = Some(buffer);
+        let overlay = self.overlay_mut(kind);
+        overlay.vertex_count = vertices.len() as u32;
+        overlay.vertex_buffer = Some(buffer);
+    }
+
+    fn overlay(&self, kind: UiOverlayKind) -> &UiOverlay {
+        match kind {
+            UiOverlayKind::Top => &self.ui_top,
+            UiOverlayKind::Bottom => &self.ui_bottom,
+        }
+    }
+
+    fn overlay_mut(&mut self, kind: UiOverlayKind) -> &mut UiOverlay {
+        match kind {
+            UiOverlayKind::Top => &mut self.ui_top,
+            UiOverlayKind::Bottom => &mut self.ui_bottom,
+        }
     }
 
     pub fn gpu_memory_for_assets(
@@ -1657,8 +1720,16 @@ impl Renderer {
     }
 
     pub fn set_ui_text<S: Into<String>>(&mut self, text: S) {
-        self.ui_text = text.into();
-        self.rebuild_ui_text_texture();
+        self.set_ui_overlay_text(UiOverlayKind::Top, text.into());
+    }
+
+    pub fn set_bottom_ui_text<S: Into<String>>(&mut self, text: S) {
+        self.set_ui_overlay_text(UiOverlayKind::Bottom, text.into());
+    }
+
+    fn set_ui_overlay_text(&mut self, kind: UiOverlayKind, text: String) {
+        self.overlay_mut(kind).text = text;
+        self.rebuild_ui_overlay(kind);
     }
 
     pub fn render(&mut self) -> Result<(), SurfaceError> {
@@ -1770,12 +1841,18 @@ impl Renderer {
             }
         }
 
-        if self.ui_vertex_count > 0 {
+        for (overlay, label) in [
+            (&self.ui_top, "UI Top Pass"),
+            (&self.ui_bottom, "UI Bottom Pass"),
+        ] {
+            if overlay.vertex_count == 0 {
+                continue;
+            }
             if let (Some(buffer), Some(texture)) =
-                (&self.ui_vertex_buffer, self.ui_text_texture.as_ref())
+                (&overlay.vertex_buffer, overlay.texture.as_ref())
             {
                 let mut ui_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                    label: Some("UI Pass"),
+                    label: Some(label),
                     color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                         view: &view,
                         resolve_target: None,
@@ -1791,7 +1868,7 @@ impl Renderer {
                 ui_pass.set_pipeline(&self.ui_pipeline);
                 ui_pass.set_bind_group(0, texture.bind_group.as_ref(), &[]);
                 ui_pass.set_vertex_buffer(0, buffer.slice(..));
-                ui_pass.draw(0..self.ui_vertex_count, 0..1);
+                ui_pass.draw(0..overlay.vertex_count, 0..1);
             }
         }
 

@@ -13,10 +13,11 @@ impl InputSystem {
         entity_id: u32,
         pressed_keys: &HashSet<KeyCode>,
         just_pressed: &HashSet<KeyCode>,
+        free_flight: bool,
     ) {
         let camera_yaw = ecs.camera_component(entity_id).map(|camera| camera.yaw);
-        let direction = Self::direction_from_keys(pressed_keys, camera_yaw);
-        let jump_requested = just_pressed.contains(&KeyCode::Space);
+        let direction = Self::direction_from_keys(pressed_keys, camera_yaw, free_flight);
+        let jump_requested = !free_flight && just_pressed.contains(&KeyCode::Space);
         if let Some(input) = ecs.input_component_mut(entity_id) {
             input.set_direction(direction);
             if jump_requested {
@@ -35,6 +36,7 @@ impl InputSystem {
     fn direction_from_keys(
         pressed_keys: &HashSet<KeyCode>,
         camera_yaw: Option<f32>,
+        free_flight: bool,
     ) -> [f32; 3] {
         let mut x: f32 = 0.0;
         let mut y: f32 = 0.0;
@@ -55,6 +57,9 @@ impl InputSystem {
         if pressed_keys.contains(&KeyCode::ShiftLeft) || pressed_keys.contains(&KeyCode::ShiftRight)
         {
             y -= 1.0;
+        }
+        if free_flight && (pressed_keys.contains(&KeyCode::Space) || pressed_keys.contains(&KeyCode::KeyE)) {
+            y += 1.0;
         }
 
         if x == 0.0 && y == 0.0 && z == 0.0 {

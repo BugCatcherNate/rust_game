@@ -1,9 +1,9 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs::File;
 use std::io::BufReader;
 use std::sync::Arc;
 
-use crate::components::{CameraComponent, Position, ScriptComponent};
+use crate::components::{CameraComponent, PhysicsComponent, Position, ScriptComponent};
 use crate::ecs::{ComponentKind, ECS};
 use crate::rendering::{DebugLine, Renderer};
 use crate::scene::{self, SceneLibrary, SceneLookupError};
@@ -15,10 +15,12 @@ use log::{info, warn};
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
 use winit::application::ApplicationHandler;
 use winit::error::EventLoopError;
-use winit::event::{DeviceEvent, DeviceId, MouseButton, WindowEvent};
+use winit::event::{DeviceEvent, DeviceId, Ime, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{CursorGrabMode, Window, WindowAttributes, WindowId};
+
+const CONSOLE_HISTORY_LIMIT: usize = 10;
 
 /// Configuration for running the built-in engine loop.
 pub struct GameConfig {
@@ -42,6 +44,11 @@ pub struct ShotEventHit {
     pub entity_id: u32,
     pub point: [f32; 3],
     pub normal: [f32; 3],
+}
+
+#[derive(Debug, Clone)]
+pub struct ConsoleCommandEvent {
+    pub text: String,
 }
 
 impl GameConfig {
@@ -174,6 +181,12 @@ struct GameApp {
     custom_systems: Vec<Box<dyn CustomSystem>>,
     custom_command_buffer: Vec<ScriptCommand>,
     debug_lines: Vec<DebugLine>,
+    console_open: bool,
+    console_input: String,
+    console_history: VecDeque<String>,
+    creative_mode: bool,
+    saved_player_physics: Option<PhysicsComponent>,
+    saved_camera_physics: Option<PhysicsComponent>,
 }
 
 impl GameApp {
@@ -211,6 +224,12 @@ impl GameApp {
             custom_systems,
             custom_command_buffer: Vec::new(),
             debug_lines: Vec::new(),
+            console_open: false,
+            console_input: String::new(),
+            console_history: VecDeque::new(),
+            creative_mode: false,
+            saved_player_physics: None,
+            saved_camera_physics: None,
         };
         app.reload_scene(&initial_scene)
             .unwrap_or_else(|err| panic!("Failed to load scene '{}': {}", initial_scene, err));
@@ -238,6 +257,133 @@ impl GameApp {
             "Rust ECS Demo - WASD to move\nPos: ({:.2}, {:.2}, {:.2})  Yaw: {:.2}  Pitch: {:.2}",
             position.x, position.y, position.z, camera.yaw, camera.pitch
         )
+    }
+
+    fn toggle_console(&mut self) {
+        self.console_open = !self.console_open;
+        if self.console_open {
+            self.pressed_keys.clear();
+            self.just_pressed.clear();
+        }
+    }
+
+    fn hide_console(&mut self) {
+        self.console_open = false;
+    }
+
+    fn push_console_history(&mut self, entry: String) {
+        self.console_history.push_back(entry);
+        while self.console_history.len() > CONSOLE_HISTORY_LIMIT {
+            self.console_history.pop_front();
+        }
+    }
+
+    fn submit_console_command(&mut self) {
+        let trimmed = self.console_input.trim();
+        if !trimmed.is_empty() {
+            let command = trimmed.to_string();
+            self.push_console_history(command.clone());
+            self.handle_console_command(&command);
+            self.ecs
+                .emit_event(ConsoleCommandEvent { text: command });
+        }
+        self.console_input.clear();
+    }
+
+    fn handle_console_command(&mut self, command: &str) {
+        match command.trim().to_ascii_lowercase().as_str() {
+            "mem" | "memory" | "memory usage" => self.display_memory_usage(),
+            "creative" => self.toggle_creative_mode(),
+            _ => {}
+        }
+    }
+
+    fn display_memory_usage(&mut self) {
+        let cpu_bytes = self.ecs.total_memory_usage();
+        let gpu_bytes = self
+            .renderer
+            .as_ref()
+            .map(|renderer| renderer.total_gpu_memory())
+            .unwrap_or(0);
+        let message = format!(
+            "Memory: CPU {} | GPU {}",
+            Self::format_bytes(cpu_bytes),
+            Self::format_bytes(gpu_bytes)
+        );
+        self.push_console_history(message);
+    }
+
+    fn format_bytes(bytes: usize) -> String {
+        const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+        let mut value = bytes as f64;
+        let mut unit_index = 0;
+        while value >= 1024.0 && unit_index < UNITS.len() - 1 {
+            value /= 1024.0;
+            unit_index += 1;
+        }
+        if unit_index == 0 {
+            format!("{} {}", bytes, UNITS[unit_index])
+        } else {
+            format!("{:.2} {}", value, UNITS[unit_index])
+        }
+    }
+
+    fn toggle_creative_mode(&mut self) {
+        if self.creative_mode {
+            self.disable_creative_mode();
+        } else {
+            self.enable_creative_mode();
+        }
+    }
+
+    fn enable_creative_mode(&mut self) {
+        if self.creative_mode {
+            return;
+        }
+        self.saved_player_physics = self.ecs.physics_component(self.player_id).cloned();
+        if self.saved_player_physics.is_some() {
+            self.ecs.remove_physics_component(self.player_id);
+        }
+        if self.camera_id != self.player_id {
+            self.saved_camera_physics = self.ecs.physics_component(self.camera_id).cloned();
+            if self.saved_camera_physics.is_some() {
+                self.ecs.remove_physics_component(self.camera_id);
+            }
+        } else {
+            self.saved_camera_physics = None;
+        }
+        self.physics_system.rebuild_from_ecs(&mut self.ecs);
+        self.creative_mode = true;
+        self.push_console_history("Creative mode enabled".to_string());
+    }
+
+    fn disable_creative_mode(&mut self) {
+        if !self.creative_mode {
+            return;
+        }
+        if let Some(component) = self.saved_player_physics.take() {
+            self.ecs.add_physics_component(self.player_id, component);
+        }
+        if let Some(component) = self.saved_camera_physics.take() {
+            if self.camera_id != self.player_id {
+                self.ecs.add_physics_component(self.camera_id, component);
+            } else {
+                self.ecs.add_physics_component(self.player_id, component);
+            }
+        }
+        self.physics_system.rebuild_from_ecs(&mut self.ecs);
+        self.creative_mode = false;
+        self.push_console_history("Creative mode disabled".to_string());
+    }
+
+    fn console_overlay_text(&self) -> String {
+        let mut lines = Vec::new();
+        lines.push("Debug Console (` to close, Enter to submit)".to_string());
+        for entry in self.console_history.iter() {
+            lines.push(format!("> {}", entry));
+        }
+        lines.push(format!("> {}_", self.console_input));
+        lines.join("\n")
     }
 
     fn ensure_shutdown(&mut self) {
@@ -421,6 +567,9 @@ impl GameApp {
         self.current_scene_id = scene_id.to_string();
         self.printed_state = false;
         self.pending_mouse_delta = (0.0, 0.0);
+        self.creative_mode = false;
+        self.saved_player_physics = None;
+        self.saved_camera_physics = None;
 
         self.scripting_system.reset();
 
@@ -519,6 +668,7 @@ impl GameApp {
                     renderer.set_ui_text(Self::build_hud_text(position, camera));
                 }
             }
+            renderer.set_bottom_ui_text(String::new());
             RenderPrepSystem::update(renderer, &self.ecs, Some(self.camera_id));
         }
     }
@@ -576,6 +726,9 @@ impl GameApp {
                 ScriptCommand::EmitEvent(event) => {
                     self.ecs.emit_boxed_event(event);
                 }
+                ScriptCommand::DebugLine(line) => {
+                    self.debug_lines.push(line);
+                }
             }
         }
         scene_changed
@@ -603,6 +756,7 @@ impl ApplicationHandler for GameApp {
         }
 
         let window = create_game_window(event_loop, &self.window_title);
+        window.set_ime_allowed(true);
 
         self.window_id = Some(window.id());
         self.renderer = Some(pollster::block_on(Renderer::new(window.clone())));
@@ -633,12 +787,52 @@ impl ApplicationHandler for GameApp {
                     renderer.resize(new_size);
                 }
             }
+            WindowEvent::Ime(ime_event) => {
+                if self.console_open {
+                    if let Ime::Commit(text) = ime_event {
+                        self.console_input.push_str(&text);
+                    }
+                }
+            }
             WindowEvent::KeyboardInput { event, .. } => {
                 if let PhysicalKey::Code(code) = event.physical_key {
-                    if code == KeyCode::Escape && event.state == winit::event::ElementState::Pressed
+                    if code == KeyCode::Backquote
+                        && event.state == winit::event::ElementState::Pressed
                     {
+                        self.toggle_console();
+                        return;
+                    }
+                    if code == KeyCode::Escape
+                        && event.state == winit::event::ElementState::Pressed
+                    {
+                        if self.console_open {
+                            self.hide_console();
+                            return;
+                        }
                         self.ensure_shutdown();
                         event_loop.exit();
+                        return;
+                    }
+                    if self.console_open {
+                        if event.state == winit::event::ElementState::Pressed {
+                            match code {
+                                KeyCode::Enter => {
+                                    self.submit_console_command();
+                                }
+                                KeyCode::Backspace => {
+                                    self.console_input.pop();
+                                }
+                                _ => {
+                                    if let Some(text) = event.text.as_ref() {
+                                        for ch in text.chars() {
+                                            if !ch.is_control() {
+                                                self.console_input.push(ch);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         return;
                     }
                     match event.state {
@@ -676,6 +870,7 @@ impl ApplicationHandler for GameApp {
                     self.player_id,
                     &self.pressed_keys,
                     &self.just_pressed,
+                    self.creative_mode,
                 );
                 if self.camera_id != self.player_id {
                     InputSystem::update_entity_from_keys(
@@ -683,6 +878,7 @@ impl ApplicationHandler for GameApp {
                         self.camera_id,
                         &self.pressed_keys,
                         &self.just_pressed,
+                        self.creative_mode,
                     );
                 }
                 self.just_pressed.clear();
@@ -699,6 +895,11 @@ impl ApplicationHandler for GameApp {
                 let mut commands = self.scripting_system.take_commands();
                 commands.extend(self.custom_command_buffer.drain(..));
                 let _scene_changed = self.process_commands(commands);
+                let console_overlay = if self.console_open {
+                    self.console_overlay_text()
+                } else {
+                    String::new()
+                };
                 if let Some(renderer) = self.renderer.as_mut() {
                     RenderPrepSystem::update(renderer, &self.ecs, Some(self.camera_id));
                     renderer.set_debug_lines(&self.debug_lines);
@@ -721,6 +922,7 @@ impl ApplicationHandler for GameApp {
                             }
                         }
                     }
+                    renderer.set_bottom_ui_text(console_overlay);
                     if let Err(err) = renderer.render() {
                         self.handle_render_error(event_loop, err);
                     }

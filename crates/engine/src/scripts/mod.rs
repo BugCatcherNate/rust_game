@@ -3,6 +3,7 @@ use std::collections::HashMap;
 
 use crate::components::{Position, RenderComponent};
 use crate::ecs::ComponentKind;
+use crate::rendering::DebugLine;
 
 #[allow(dead_code)]
 pub struct ScriptEntityContext<'a> {
@@ -39,6 +40,7 @@ pub enum ScriptCommand {
         component: ComponentKind,
     },
     EmitEvent(Box<dyn Any + Send>),
+    DebugLine(DebugLine),
 }
 
 pub trait ScriptBehavior {

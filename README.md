@@ -62,7 +62,8 @@ impl CustomSystem for MySystem {
     fn scene_loaded(&mut self, ecs: &mut ECS, scene: &str) { /* ... */ }
 
     fn update(&mut self, ecs: &mut ECS, scene: &str, commands: &mut Vec<ScriptCommand>) {
-        // Read/write ECS data, queue ScriptCommand::LoadScene or ::RemoveComponent, etc.
+        // Read/write ECS data, queue ScriptCommand::LoadScene, ::DebugLine,
+        // ::RemoveComponent, etc.
     }
 
     fn hud_text(&mut self, ecs: &ECS, scene: &str) -> Option<String> {
@@ -72,6 +73,37 @@ impl CustomSystem for MySystem {
 ```
 
 Register systems via `GameConfig::with_custom_system`. The sample game installs `ShootingSystem` (`crates/app/src/main.rs`) which listens for `ShotEvent`s, updates HUD text, and removes hit targets.
+
+Need a temporary visualization? Custom systems (and scripts) can push
+`ScriptCommand::DebugLine(rust_game::rendering::DebugLine { .. })` into the
+provided command buffer to render a colored line for the next frame.
+
+### Debug Console
+
+Press the backtick key (<code>`</code>) during gameplay to toggle a simple
+debug console overlay anchored at the bottom of the screen. Type text and press
+<kbd>Enter</kbd> to submit a command.
+Each submitted line is published as `ConsoleCommandEvent` on the ECS event bus,
+so any custom system can react to it:
+
+```rust
+for console_event in ecs.drain_events::<ConsoleCommandEvent>() {
+    match console_event.text.as_str() {
+        "reload" => commands.push(ScriptCommand::LoadScene("labyrinth".into())),
+        other => log::info!("Unknown console command: {}", other),
+    }
+}
+```
+
+The latest console history is displayed in the HUD alongside other custom
+sections, making it useful for quick debugging cheats or inspection commands.
+
+Built-in helper: type `mem` (or `memory`) to print the current CPU+GPU memory
+usage gathered from the ECS and renderer.
+
+Type `creative` to toggle a zero-gravity flight mode: the player and camera
+temporarily drop their physics bodies, letting you float freely (Space to rise,
+Shift to descend) until you run the command again.
 
 ### Events & Message Bus
 
