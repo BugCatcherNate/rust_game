@@ -15,7 +15,7 @@ fn test_add_entity() {
         z: 0.0,
     };
     let name = Name("Test Entity".to_string());
-    let id = ecs.add_entity(position.clone(), name.clone());
+    let id = ecs.add_entity(position, name.clone());
 
     // Verify that the entity was added
     assert_eq!(ecs.entity_to_location.len(), 1);
@@ -229,7 +229,7 @@ fn add_tag_using_ecs() {
         z: 0.0,
     };
     let name = Name("Finder".to_string());
-    let id = ecs.add_entity(position.clone(), name.clone());
+    let id = ecs.add_entity(position, name.clone());
     ecs.tag_manager.add_tag(id, "player");
     let entities = ecs.tag_manager.get_entities_with_tag("player").unwrap();
     assert!(entities.contains(&id));
@@ -245,7 +245,7 @@ fn test_find_entity() {
         z: 0.0,
     };
     let name = Name("Finder".to_string());
-    let id = ecs.add_entity(position.clone(), name.clone());
+    let id = ecs.add_entity(position, name.clone());
 
     // Find the entity
     let archetype = ecs.find_entity(id);
@@ -264,7 +264,7 @@ fn test_find_entity_components() {
         z: 0.0,
     };
     let name = Name("Component Checker".to_string());
-    let id = ecs.add_entity(position.clone(), name.clone());
+    let id = ecs.add_entity(position, name.clone());
 
     // Find the components
     let components = ecs.find_entity_components(id);
@@ -286,7 +286,7 @@ fn test_remove_entity() {
         z: 0.0,
     };
     let name = Name("Removable".to_string());
-    let id = ecs.add_entity(position.clone(), name.clone());
+    let id = ecs.add_entity(position, name.clone());
 
     // Verify the entity exists in the archetype before removal
     let location = ecs.entity_to_location.get(&id).unwrap();
@@ -337,7 +337,7 @@ fn test_reuse_entity_id() {
         z: 0.0,
     };
     let name = Name("Reusable".to_string());
-    let id = ecs.add_entity(position.clone(), name.clone());
+    let id = ecs.add_entity(position, name.clone());
     ecs.remove_entity(id);
 
     // Add a new entity and check ID reuse
@@ -347,7 +347,7 @@ fn test_reuse_entity_id() {
         z: 0.0,
     };
     let new_name = Name("Reused".to_string());
-    let new_id = ecs.add_entity(new_position.clone(), new_name.clone());
+    let new_id = ecs.add_entity(new_position, new_name.clone());
 
     assert_eq!(id, new_id);
     assert!(ecs.find_entity_components(new_id).is_some());

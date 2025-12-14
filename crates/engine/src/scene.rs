@@ -290,7 +290,7 @@ fn default_physics_half_extents() -> [f32; 3] {
 
 pub fn apply_scene_definition(scene: &SceneDefinition, ecs: &mut ECS) -> SceneSettings {
     for entity in &scene.entities {
-        let position = entity.position.clone();
+        let position = entity.position;
         let base_height = position.y;
         let entity_id = ecs.add_entity(position, Name(entity.name.clone()));
 
@@ -343,8 +343,7 @@ pub fn apply_scene_definition(scene: &SceneDefinition, ecs: &mut ECS) -> SceneSe
                 render_cfg.as_ref(),
                 components.terrain.as_ref(),
             );
-            let mut physics =
-                PhysicsComponent::new(physics_cfg.body_type, resolved_half_extents);
+            let mut physics = PhysicsComponent::new(physics_cfg.body_type, resolved_half_extents);
             physics.restitution = physics_cfg.restitution;
             physics.friction = physics_cfg.friction;
             ecs.add_physics_component(entity_id, physics);
@@ -421,11 +420,7 @@ fn resolve_physics_half_extents(
         return half_extents;
     }
     if let Some(terrain) = terrain {
-        return [
-            terrain.size * 0.5,
-            terrain.height * 0.5,
-            terrain.size * 0.5,
-        ];
+        return [terrain.size * 0.5, terrain.height * 0.5, terrain.size * 0.5];
     }
     if let Some(render) = render {
         let half = render.size * 0.5;

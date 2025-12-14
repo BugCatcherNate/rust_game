@@ -934,44 +934,43 @@ impl Renderer {
                 bind_group_layouts: &[&camera_bind_group_layout],
                 push_constant_ranges: &[],
             });
-        let debug_line_pipeline =
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("Debug Line Pipeline"),
-                layout: Some(&debug_line_pipeline_layout),
-                vertex: wgpu::VertexState {
-                    module: &debug_line_shader,
-                    entry_point: Some("vs_main"),
-                    buffers: &[DebugLineVertex::layout()],
-                    compilation_options: Default::default(),
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &debug_line_shader,
-                    entry_point: Some("fs_main"),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: config.format,
-                        blend: Some(wgpu::BlendState::REPLACE),
-                        write_mask: wgpu::ColorWrites::ALL,
-                    })],
-                    compilation_options: Default::default(),
-                }),
-                primitive: wgpu::PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::LineList,
-                    strip_index_format: None,
-                    front_face: wgpu::FrontFace::Ccw,
-                    cull_mode: None,
-                    ..Default::default()
-                },
-                depth_stencil: Some(wgpu::DepthStencilState {
-                    format: DEPTH_FORMAT,
-                    depth_write_enabled: false,
-                    depth_compare: wgpu::CompareFunction::LessEqual,
-                    stencil: Default::default(),
-                    bias: Default::default(),
-                }),
-                multisample: wgpu::MultisampleState::default(),
-                multiview: None,
-                cache: None,
-            });
+        let debug_line_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("Debug Line Pipeline"),
+            layout: Some(&debug_line_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &debug_line_shader,
+                entry_point: Some("vs_main"),
+                buffers: &[DebugLineVertex::layout()],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &debug_line_shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: config.format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::LineList,
+                strip_index_format: None,
+                front_face: wgpu::FrontFace::Ccw,
+                cull_mode: None,
+                ..Default::default()
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: false,
+                depth_compare: wgpu::CompareFunction::LessEqual,
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
+            multisample: wgpu::MultisampleState::default(),
+            multiview: None,
+            cache: None,
+        });
 
         let mut renderer = Self {
             _window: window,
@@ -1111,7 +1110,7 @@ impl Renderer {
                         texture: texture.map(|t| t.asset_path.clone()),
                     };
                     grouped_instances.entry(key).or_default().push(InstanceRaw {
-                        translation: [position.x, position.y, position.z],
+                        translation: position.as_array(),
                         scale: renderable.size,
                         color: renderable.color,
                         _padding: 0.0,
@@ -1650,7 +1649,7 @@ impl Renderer {
         .normalize();
         let eye = Vec3::new(position.x, position.y, position.z);
         let up = Vec3::Y;
-        self.camera_position = [position.x, position.y, position.z];
+        self.camera_position = position.as_array();
         self.view_matrix = Mat4::look_to_rh(eye, forward, up);
         self.update_camera_uniform();
     }
@@ -1667,12 +1666,8 @@ impl Renderer {
                 }
                 LightKind::Point { radius } => {
                     if point_index < MAX_POINT_LIGHTS {
-                        self.light_uniform.point_positions[point_index] = [
-                            position.x,
-                            position.y,
-                            position.z,
-                            radius.max(0.001),
-                        ];
+                        self.light_uniform.point_positions[point_index] =
+                            [position.x, position.y, position.z, radius.max(0.001)];
                         self.light_uniform.point_colors[point_index] = [
                             light.color[0],
                             light.color[1],
@@ -1687,8 +1682,7 @@ impl Renderer {
         if let Some((direction, color, intensity)) = directional {
             self.light_uniform.directional_direction =
                 [direction[0], direction[1], direction[2], 0.0];
-            self.light_uniform.directional_color =
-                [color[0], color[1], color[2], intensity];
+            self.light_uniform.directional_color = [color[0], color[1], color[2], intensity];
         } else {
             self.light_uniform.directional_direction = [0.0, -1.0, 0.0, 0.0];
             self.light_uniform.directional_color = [1.0, 1.0, 1.0, 0.0];

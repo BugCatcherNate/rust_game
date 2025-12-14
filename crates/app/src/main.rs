@@ -3,8 +3,8 @@ use std::sync::Arc;
 use rust_game::app::{run_game, CustomSystem, GameConfig, ShotEvent};
 use rust_game::components::{PhysicsBodyType, Position};
 use rust_game::ecs::ECS;
-use rust_game::modules;
 use rust_game::math::normalize_vec3;
+use rust_game::modules;
 use rust_game::scene::{
     CameraComponentDefinition, ComponentDefinition, EntityDefinition, InputComponentDefinition,
     LightComponentDefinition, ModelComponentDefinition, PhysicsComponentDefinition,
@@ -97,11 +97,7 @@ fn labyrinth_floor() -> EntityDefinition {
         terrain: Some(terrain),
         physics: Some(PhysicsComponentDefinition {
             body_type: PhysicsBodyType::Static,
-            half_extents: Some([
-                terrain_size * 0.5,
-                terrain_height * 0.5,
-                terrain_size * 0.5,
-            ]),
+            half_extents: Some([terrain_size * 0.5, terrain_height * 0.5, terrain_size * 0.5]),
             ..Default::default()
         }),
         ..Default::default()
@@ -114,10 +110,7 @@ fn target() -> EntityDefinition {
         y: 3.0,
         z: 0.0,
     };
-    let mut entity = target_entity(
-        "Sun",
-        position,
-    );
+    let mut entity = target_entity("Sun", position);
     entity.components.render = Some(RenderComponentDefinition {
         color: [1.0, 0.95, 0.6],
         size: 0.5,
@@ -134,13 +127,7 @@ fn sun_light() -> EntityDefinition {
         z: 0.0,
     };
     let direction = normalize_vec3([0.0, -1.0, 0.0]);
-    let mut entity = directional_light(
-        "Sun",
-        position,
-        direction,
-        [1.0, 0.95, 0.85],
-        1.0,
-    );
+    let mut entity = directional_light("Sun", position, direction, [1.0, 0.95, 0.85], 1.0);
     entity.components.render = Some(RenderComponentDefinition {
         color: [1.0, 0.95, 0.6],
         size: 0.5,
@@ -150,10 +137,7 @@ fn sun_light() -> EntityDefinition {
     });
     entity
 }
-fn target_entity(
-    name: &str,
-    position: Position,
-) -> EntityDefinition {
+fn target_entity(name: &str, position: Position) -> EntityDefinition {
     EntityDefinition::new(name, position)
         .with_tags(["target"])
         .with_components(ComponentDefinition {

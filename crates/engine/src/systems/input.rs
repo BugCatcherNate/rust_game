@@ -58,7 +58,9 @@ impl InputSystem {
         {
             y -= 1.0;
         }
-        if free_flight && (pressed_keys.contains(&KeyCode::Space) || pressed_keys.contains(&KeyCode::KeyE)) {
+        if free_flight
+            && (pressed_keys.contains(&KeyCode::Space) || pressed_keys.contains(&KeyCode::KeyE))
+        {
             y += 1.0;
         }
 

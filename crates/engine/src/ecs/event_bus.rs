@@ -67,10 +67,7 @@ mod tests {
         bus.publish(ExampleEvent("second"));
 
         let drained = bus.drain::<ExampleEvent>();
-        assert_eq!(
-            drained,
-            vec![ExampleEvent("first"), ExampleEvent("second")]
-        );
+        assert_eq!(drained, vec![ExampleEvent("first"), ExampleEvent("second")]);
         assert!(bus.drain::<ExampleEvent>().is_empty());
     }
 

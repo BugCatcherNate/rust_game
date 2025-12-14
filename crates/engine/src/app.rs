@@ -3,7 +3,9 @@ use std::fs::File;
 use std::io::BufReader;
 use std::sync::Arc;
 
-use crate::components::{CameraComponent, PhysicsComponent, Position, ScriptComponent};
+use crate::components::{
+    CameraComponent, PhysicsBodyType, PhysicsComponent, Position, ScriptComponent,
+};
 use crate::ecs::{ComponentKind, ECS};
 use crate::rendering::{DebugLine, Renderer};
 use crate::scene::{self, SceneLibrary, SceneLookupError};
@@ -112,7 +114,6 @@ impl GameConfig {
         );
         self
     }
-
 }
 
 #[derive(Debug, Clone)]
@@ -181,6 +182,7 @@ struct GameApp {
     custom_systems: Vec<Box<dyn CustomSystem>>,
     custom_command_buffer: Vec<ScriptCommand>,
     debug_lines: Vec<DebugLine>,
+    debug_lines_enabled: bool,
     console_open: bool,
     console_input: String,
     console_history: VecDeque<String>,
@@ -224,6 +226,7 @@ impl GameApp {
             custom_systems,
             custom_command_buffer: Vec::new(),
             debug_lines: Vec::new(),
+            debug_lines_enabled: true,
             console_open: false,
             console_input: String::new(),
             console_history: VecDeque::new(),
@@ -284,18 +287,58 @@ impl GameApp {
             let command = trimmed.to_string();
             self.push_console_history(command.clone());
             self.handle_console_command(&command);
-            self.ecs
-                .emit_event(ConsoleCommandEvent { text: command });
+            self.ecs.emit_event(ConsoleCommandEvent { text: command });
         }
         self.console_input.clear();
     }
 
     fn handle_console_command(&mut self, command: &str) {
-        match command.trim().to_ascii_lowercase().as_str() {
-            "mem" | "memory" | "memory usage" => self.display_memory_usage(),
-            "creative" => self.toggle_creative_mode(),
+        let normalized = command.trim().to_ascii_lowercase();
+        if normalized.is_empty() {
+            return;
+        }
+        match normalized.as_str() {
+            "mem" | "memory" | "memory usage" => {
+                self.display_memory_usage();
+                return;
+            }
+            "creative" => {
+                self.toggle_creative_mode();
+                return;
+            }
             _ => {}
         }
+
+        let mut parts = normalized.split_whitespace();
+        if let Some(keyword) = parts.next() {
+            match keyword {
+                "debuglines" => self.handle_debug_lines_command(parts.next()),
+                _ => {}
+            }
+        }
+    }
+
+    fn handle_debug_lines_command(&mut self, argument: Option<&str>) {
+        match argument {
+            Some("on") => self.set_debug_lines_enabled(true),
+            Some("off") => self.set_debug_lines_enabled(false),
+            Some("toggle") | None => {
+                let enabled = !self.debug_lines_enabled;
+                self.set_debug_lines_enabled(enabled);
+            }
+            Some(other) => {
+                self.push_console_history(format!(
+                    "debuglines usage: debuglines [on|off|toggle] (got '{}')",
+                    other
+                ));
+            }
+        }
+    }
+
+    fn set_debug_lines_enabled(&mut self, enabled: bool) {
+        self.debug_lines_enabled = enabled;
+        let status = if enabled { "enabled" } else { "disabled" };
+        self.push_console_history(format!("Debug lines {}", status));
     }
 
     fn display_memory_usage(&mut self) {
@@ -599,7 +642,7 @@ impl GameApp {
         let Some(camera) = self.ecs.camera_component(self.camera_id) else {
             return;
         };
-        let origin = [position.x, position.y, position.z];
+        let origin = position.as_array();
         let direction = Self::camera_forward(camera);
         let mut ray_origin = origin;
         for i in 0..3 {
@@ -641,6 +684,69 @@ impl GameApp {
             direction,
             hit: hit_result,
         });
+    }
+
+    fn append_physics_debug_boxes(&mut self) {
+        let mut boxes = Vec::new();
+        for archetype in &self.ecs.archetypes {
+            let Some(physics_components) = &archetype.physics else {
+                continue;
+            };
+            for (index, physics) in physics_components.iter().enumerate() {
+                let position = archetype.positions[index];
+                let color = Self::debug_color_for_body(physics.body_type);
+                Self::add_box_lines(&mut boxes, position, physics.half_extents, color);
+            }
+        }
+        self.debug_lines.extend(boxes);
+    }
+
+    fn add_box_lines(
+        lines: &mut Vec<DebugLine>,
+        center: Position,
+        half_extents: [f32; 3],
+        color: [f32; 3],
+    ) {
+        let [hx, hy, hz] = half_extents;
+        let corners = [
+            [center.x - hx, center.y - hy, center.z - hz],
+            [center.x + hx, center.y - hy, center.z - hz],
+            [center.x + hx, center.y - hy, center.z + hz],
+            [center.x - hx, center.y - hy, center.z + hz],
+            [center.x - hx, center.y + hy, center.z - hz],
+            [center.x + hx, center.y + hy, center.z - hz],
+            [center.x + hx, center.y + hy, center.z + hz],
+            [center.x - hx, center.y + hy, center.z + hz],
+        ];
+        const EDGES: [(usize, usize); 12] = [
+            (0, 1),
+            (1, 2),
+            (2, 3),
+            (3, 0),
+            (4, 5),
+            (5, 6),
+            (6, 7),
+            (7, 4),
+            (0, 4),
+            (1, 5),
+            (2, 6),
+            (3, 7),
+        ];
+        for &(start, end) in &EDGES {
+            lines.push(DebugLine {
+                start: corners[start],
+                end: corners[end],
+                color,
+            });
+        }
+    }
+
+    fn debug_color_for_body(body_type: PhysicsBodyType) -> [f32; 3] {
+        match body_type {
+            PhysicsBodyType::Dynamic => [0.2, 0.8, 1.0],
+            PhysicsBodyType::Static => [0.3, 1.0, 0.3],
+            PhysicsBodyType::Kinematic => [1.0, 0.8, 0.3],
+        }
     }
 
     fn camera_forward(camera: &CameraComponent) -> [f32; 3] {
@@ -802,8 +908,7 @@ impl ApplicationHandler for GameApp {
                         self.toggle_console();
                         return;
                     }
-                    if code == KeyCode::Escape
-                        && event.state == winit::event::ElementState::Pressed
+                    if code == KeyCode::Escape && event.state == winit::event::ElementState::Pressed
                     {
                         if self.console_open {
                             self.hide_console();
@@ -848,9 +953,7 @@ impl ApplicationHandler for GameApp {
                 }
             }
             WindowEvent::MouseInput { state, button, .. } => {
-                if button == MouseButton::Left
-                    && state == winit::event::ElementState::Pressed
-                {
+                if button == MouseButton::Left && state == winit::event::ElementState::Pressed {
                     self.handle_fire();
                 }
             }
@@ -900,9 +1003,16 @@ impl ApplicationHandler for GameApp {
                 } else {
                     String::new()
                 };
+                if self.debug_lines_enabled {
+                    self.append_physics_debug_boxes();
+                }
                 if let Some(renderer) = self.renderer.as_mut() {
                     RenderPrepSystem::update(renderer, &self.ecs, Some(self.camera_id));
-                    renderer.set_debug_lines(&self.debug_lines);
+                    if self.debug_lines_enabled {
+                        renderer.set_debug_lines(&self.debug_lines);
+                    } else {
+                        renderer.set_debug_lines(&[]);
+                    }
                     if let Some((position, _)) = self.ecs.find_entity_components(self.camera_id) {
                         if let Some(camera) = self.ecs.camera_component(self.camera_id) {
                             let default_text = Self::build_hud_text(position, camera);

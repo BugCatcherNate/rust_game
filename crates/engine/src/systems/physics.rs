@@ -135,7 +135,7 @@ impl PhysicsSystem {
             let len = archetype.len();
             for index in 0..len {
                 let entity_id = archetype.entity_ids[index];
-                let position = archetype.positions[index].clone();
+                let position = archetype.positions[index];
                 let Some(physics) = archetype
                     .physics
                     .as_mut()
@@ -206,11 +206,8 @@ impl PhysicsSystem {
                         } else {
                             current_y
                         };
-                        let velocity = Vector::new(
-                            dir[0] * speed_per_sec,
-                            target_y,
-                            dir[2] * speed_per_sec,
-                        );
+                        let velocity =
+                            Vector::new(dir[0] * speed_per_sec, target_y, dir[2] * speed_per_sec);
                         body.set_linvel(velocity, true);
                     }
                     PhysicsBodyType::Kinematic => {
@@ -299,17 +296,13 @@ impl PhysicsSystem {
             return None;
         }
         let dir = normalize_vec3(direction);
-        let ray = Ray::new(point![origin[0], origin[1], origin[2]], vector![dir[0], dir[1], dir[2]]);
+        let ray = Ray::new(
+            point![origin[0], origin[1], origin[2]],
+            vector![dir[0], dir[1], dir[2]],
+        );
         let filter = QueryFilter::default();
         self.query_pipeline
-            .cast_ray_and_get_normal(
-                &self.bodies,
-                &self.colliders,
-                &ray,
-                max_toi,
-                true,
-                filter,
-            )
+            .cast_ray_and_get_normal(&self.bodies, &self.colliders, &ray, max_toi, true, filter)
             .and_then(|(handle, intersection)| {
                 let entity_id = *self.collider_to_entity.get(&handle)?;
                 let toi = intersection.time_of_impact;
@@ -322,7 +315,11 @@ impl PhysicsSystem {
                     entity_id,
                     toi,
                     point,
-                    normal: [intersection.normal.x, intersection.normal.y, intersection.normal.z],
+                    normal: [
+                        intersection.normal.x,
+                        intersection.normal.y,
+                        intersection.normal.z,
+                    ],
                 })
             })
     }

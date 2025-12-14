@@ -112,7 +112,7 @@ impl ScriptingSystem {
                     id: archetype.entity_ids[i],
                     name: archetype.names[i].0.clone(),
                     tags: ecs.tag_manager.tags_for_entity(archetype.entity_ids[i]),
-                    position: position.clone(),
+                    position: *position,
                 });
             }
         }
