@@ -16,12 +16,14 @@ An experiment-sized first-person game built on a lightweight Rust engine. The wo
 
 ## Features
 
-- **Modern rendering pipeline** using `wgpu`/`winit` with HUD overlays and debug-line rendering for live ray-trace visualization.
+- **Modern rendering pipeline** using `wgpu`/`winit` with HUD overlays, ray-trace visualization, and per-mesh debug overlays.
 - **Entity Component System** (`crates/engine/src/ecs`) providing archetype storage, tag queries, per-component memory reporting, and a global event bus.
-- **Physics & interaction** powered by `rapier3d`, now with ray casts exposed through the engine for gameplay queries (shooting, selection).
+- **Physics & interaction** powered by `rapier3d`, now with ray casts exposed through the engine for gameplay queries (shooting, selection) plus automatic collider wireframes to visualize half-extents.
+- **Material-aware model loading**: the OBJ loader consumes paired MTL data, resolves diffuse textures per material, and renders each segment with its own atlas (while still allowing manual texture overrides).
 - **Shooting gameplay**: left-click fires a physics ray, renders a debug trace, and emits events processed by `ShootingSystem` to destroy tagged targets.
 - **Custom systems & scripting** keep gameplay separated from the engine loop; systems can subscribe to events like `ShotEvent` without tight coupling.
 - **Audio & scene data**: ambient sounds via `rodio`, plus data-driven scenes using `SceneDefinition` builders or YAML assets.
++ **Runtime debug controls**: the in-game console can toggle collider lines (`debuglines [on|off|toggle]`) and activate creative mode to inspect the scene freely.
 
 ## Building & Running
 
@@ -98,12 +100,11 @@ for console_event in ecs.drain_events::<ConsoleCommandEvent>() {
 The latest console history is displayed in the HUD alongside other custom
 sections, making it useful for quick debugging cheats or inspection commands.
 
-Built-in helper: type `mem` (or `memory`) to print the current CPU+GPU memory
-usage gathered from the ECS and renderer.
+Built-in helpers:
 
-Type `creative` to toggle a zero-gravity flight mode: the player and camera
-temporarily drop their physics bodies, letting you float freely (Space to rise,
-Shift to descend) until you run the command again.
+- `mem` / `memory` — print the current CPU+GPU memory usage gathered from the ECS and renderer.
+- `creative` — toggle a zero-gravity flight mode: the player and camera temporarily drop their physics bodies, letting you float freely (Space to rise, Shift to descend) until you run the command again.
+- `debuglines` (`on`, `off`, or `toggle`) — control collider wireframe rendering so you can inspect half-extents without recompiling.
 
 ### Events & Message Bus
 
@@ -111,7 +112,7 @@ Systems can publish gameplay events for other systems to react to without direct
 
 ## Game-Specific Logic
 
-`crates/app/src/main.rs` builds a minimal combat sandbox: a player entity with FPS controls, a target with a collider, basic terrain, and a sun light. `ShootingSystem` consumes shot events to destroy anything tagged `target`, keeping a running HUD tally. The renderer overlays each ray as a debug line so you can see exactly where shots travel.
+`crates/app/src/main.rs` builds a minimal combat sandbox: a player entity with FPS controls, a target with a collider, basic terrain, a sun light, and a textured tree prop imported from `assets/tree.obj`. `ShootingSystem` consumes shot events to destroy anything tagged `target`, keeping a running HUD tally. The renderer overlays each ray as a debug line so you can see exactly where shots travel, and per-body wireframes make collider tuning straightforward.
 
 Additional YAML scenes in `assets/scene.yml`, `assets/other_scene.yml`, and `assets/labyrinth.yml` showcase a data-driven format for entities that mirrors the Rust builders.
 

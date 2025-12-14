@@ -46,6 +46,7 @@ fn labyrinth_scene() -> SceneDefinition {
     scene.add_entity(target());
     scene.add_entity(labyrinth_floor());
     scene.add_entity(sun_light());
+    scene.add_entity(tree_prop());
     scene
 }
 
@@ -136,6 +137,33 @@ fn sun_light() -> EntityDefinition {
         asset: "assets/cube.obj".to_string(),
     });
     entity
+}
+
+fn tree_prop() -> EntityDefinition {
+    EntityDefinition::new(
+        "Tree",
+        Position {
+            x: 4.0,
+            y: 0.0,
+            z: -3.0,
+        },
+    )
+    .with_tags(["prop"])
+    .with_components(ComponentDefinition {
+        render: Some(RenderComponentDefinition {
+            color: [0.3, 0.6, 0.2],
+            size: 1.0,
+        }),
+        model: Some(ModelComponentDefinition {
+            asset: "assets/tree.obj".to_string(),
+        }),
+        physics: Some(PhysicsComponentDefinition {
+            body_type: PhysicsBodyType::Static,
+            half_extents: Some([0.8, 2.0, 0.8]),
+            ..Default::default()
+        }),
+        ..Default::default()
+    })
 }
 fn target_entity(name: &str, position: Position) -> EntityDefinition {
     EntityDefinition::new(name, position)

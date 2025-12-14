@@ -1,12 +1,12 @@
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use crate::components::{CameraComponent, LightKind, Position};
 use crate::ecs::ECS;
 use bytemuck::{Pod, Zeroable};
 use glam::{Mat4, Vec3};
-use log::{error, warn};
+use log::error;
 use wgpu::util::DeviceExt;
 use wgpu::SurfaceError;
 use winit::dpi::PhysicalSize;
@@ -384,14 +384,19 @@ impl UiOverlay {
     }
 }
 
+struct ModelSegment {
+    first_index: u32,
+    index_count: u32,
+    texture_bind_group: Arc<wgpu::BindGroup>,
+}
+
 struct ModelEntry {
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
-    index_count: u32,
+    segments: Vec<ModelSegment>,
     instance_buffer: Option<wgpu::Buffer>,
     instance_capacity: usize,
     instance_count: u32,
-    texture_bind_group: Arc<wgpu::BindGroup>,
     vertex_bytes: usize,
     index_bytes: usize,
 }
@@ -1152,22 +1157,8 @@ impl Renderer {
             return true;
         }
 
-        match self.load_model(&key.model) {
-            Ok(mut entry) => {
-                entry.texture_bind_group = if let Some(path) = key.texture.as_ref() {
-                    match self.ensure_texture_loaded(path) {
-                        Some(texture) => Arc::clone(&texture.bind_group),
-                        None => {
-                            warn!(
-                                "Using default texture for model '{}' due to earlier errors",
-                                key.model
-                            );
-                            Arc::clone(&self.default_texture.bind_group)
-                        }
-                    }
-                } else {
-                    Arc::clone(&self.default_texture.bind_group)
-                };
+        match self.load_model(&key.model, key.texture.as_ref()) {
+            Ok(entry) => {
                 self.models.insert(key.clone(), entry);
                 true
             }
@@ -1178,14 +1169,18 @@ impl Renderer {
         }
     }
 
-    fn load_model(&self, path: &str) -> Result<ModelEntry, String> {
+    fn load_model(
+        &mut self,
+        path: &str,
+        texture_override: Option<&String>,
+    ) -> Result<ModelEntry, String> {
         let options = tobj::LoadOptions {
             triangulate: true,
             single_index: true,
             ..Default::default()
         };
 
-        let (models, _) = tobj::load_obj(Path::new(path), &options)
+        let (models, materials_result) = tobj::load_obj(Path::new(path), &options)
             .map_err(|err| format!("Failed to load OBJ '{}': {}", path, err))?;
 
         if models.is_empty() {
@@ -1195,6 +1190,46 @@ impl Renderer {
         let mut vertices = Vec::new();
         let mut indices = Vec::new();
         let mut vertex_offset = 0u32;
+        let mut segments = Vec::new();
+
+        let parent_dir = Path::new(path).parent().map(Path::to_path_buf);
+        let materials_raw = match materials_result {
+            Ok(list) => list,
+            Err(err) => {
+                error!("Failed to load materials for '{}': {:?}", path, err);
+                Vec::new()
+            }
+        };
+
+        let mut material_textures = Vec::new();
+        for material in materials_raw.into_iter() {
+            let tobj::Material {
+                diffuse_texture, ..
+            } = material;
+            let texture_path = diffuse_texture.and_then(|tex| {
+                let trimmed = tex.trim();
+                if trimmed.is_empty() {
+                    None
+                } else {
+                    let resolved = if Path::new(trimmed).is_absolute() {
+                        PathBuf::from(trimmed)
+                    } else if let Some(dir) = &parent_dir {
+                        dir.join(trimmed)
+                    } else {
+                        PathBuf::from(trimmed)
+                    };
+                    let resolved_str = resolved
+                        .to_str()
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| resolved.to_string_lossy().into_owned());
+                    Some(resolved_str)
+                }
+            });
+            material_textures.push(texture_path);
+        }
+
+        let override_bind_group =
+            texture_override.and_then(|path| self.texture_bind_group_from_path(path));
 
         for model in models {
             let mesh = model.mesh;
@@ -1230,7 +1265,33 @@ impl Renderer {
                 });
             }
 
+            let first_index = indices.len() as u32;
             indices.extend(mesh.indices.iter().map(|index| (*index) + vertex_offset));
+            let index_count = mesh.indices.len() as u32;
+
+            let segment_bind_group = if let Some(bind_group) = override_bind_group.as_ref() {
+                Arc::clone(bind_group)
+            } else if !material_textures.is_empty() {
+                let texture_path = mesh
+                    .material_id
+                    .and_then(|id| material_textures.get(id))
+                    .and_then(|entry| entry.clone());
+                if let Some(path) = texture_path {
+                    self.texture_bind_group_from_path(&path)
+                        .unwrap_or_else(|| Arc::clone(&self.default_texture.bind_group))
+                } else {
+                    Arc::clone(&self.default_texture.bind_group)
+                }
+            } else {
+                Arc::clone(&self.default_texture.bind_group)
+            };
+
+            segments.push(ModelSegment {
+                first_index,
+                index_count,
+                texture_bind_group: segment_bind_group,
+            });
+
             vertex_offset += num_vertices as u32;
         }
 
@@ -1256,11 +1317,10 @@ impl Renderer {
         Ok(ModelEntry {
             vertex_buffer,
             index_buffer,
-            index_count: indices.len() as u32,
+            segments,
             instance_buffer: None,
             instance_capacity: 0,
             instance_count: 0,
-            texture_bind_group: Arc::clone(&self.default_texture.bind_group),
             vertex_bytes,
             index_bytes,
         })
@@ -1284,6 +1344,11 @@ impl Renderer {
             }
         }
         self.textures.get(path)
+    }
+
+    fn texture_bind_group_from_path(&mut self, path: &str) -> Option<Arc<wgpu::BindGroup>> {
+        self.ensure_texture_loaded(path)
+            .map(|entry| Arc::clone(&entry.bind_group))
     }
 
     fn load_texture_from_path(
@@ -1792,7 +1857,6 @@ impl Renderer {
                 if entry.instance_count == 0 {
                     continue;
                 }
-                render_pass.set_bind_group(1, entry.texture_bind_group.as_ref(), &[]);
                 let instance_buffer = match &entry.instance_buffer {
                     Some(buffer) => buffer,
                     None => continue,
@@ -1801,7 +1865,14 @@ impl Renderer {
                 render_pass.set_vertex_buffer(1, instance_buffer.slice(..));
                 render_pass
                     .set_index_buffer(entry.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-                render_pass.draw_indexed(0..entry.index_count, 0, 0..entry.instance_count);
+                for segment in &entry.segments {
+                    render_pass.set_bind_group(1, segment.texture_bind_group.as_ref(), &[]);
+                    render_pass.draw_indexed(
+                        segment.first_index..(segment.first_index + segment.index_count),
+                        0,
+                        0..entry.instance_count,
+                    );
+                }
             }
         }
 
