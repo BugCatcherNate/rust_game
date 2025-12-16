@@ -1,8 +1,12 @@
 use rust_game::components::{
-    CameraComponent, InputComponent, LightComponent, ModelComponent, Name, Position,
+    CameraComponent, InputComponent, LightComponent, ModelComponent, Name, Orientation, Position,
     RenderComponent, ScriptComponent, TerrainComponent,
 };
 use rust_game::ecs::ECS;
+
+fn add_entity(ecs: &mut ECS, position: Position, name: Name) -> u32 {
+    ecs.add_entity(position, Orientation::identity(), name)
+}
 
 #[test]
 fn test_add_entity() {
@@ -15,7 +19,7 @@ fn test_add_entity() {
         z: 0.0,
     };
     let name = Name("Test Entity".to_string());
-    let id = ecs.add_entity(position, name.clone());
+    let id = add_entity(&mut ecs, position, name.clone());
 
     // Verify that the entity was added
     assert_eq!(ecs.entity_to_location.len(), 1);
@@ -24,7 +28,31 @@ fn test_add_entity() {
     // Check the entity's components
     let components = ecs.find_entity_components(id).unwrap();
     assert_eq!(components.0, &position);
-    assert_eq!(components.1, &name);
+    assert_eq!(components.1, &Orientation::identity());
+    assert_eq!(components.2, &name);
+}
+
+#[test]
+fn test_orientation_component_mut() {
+    let mut ecs = ECS::new();
+    let id = add_entity(
+        &mut ecs,
+        Position {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        Name("Rotated".into()),
+    );
+    let target = Orientation::from_yaw_pitch_roll(0.3, -0.1, 0.0);
+    {
+        let orientation = ecs
+            .orientation_component_mut(id)
+            .expect("orientation missing");
+        *orientation = target;
+    }
+    let (_, stored, _) = ecs.find_entity_components(id).expect("entity missing");
+    assert_eq!(stored, &target);
 }
 
 #[test]
@@ -37,7 +65,7 @@ fn test_add_render_component() {
         z: 0.0,
     };
     let name = Name("Renderable".to_string());
-    let id = ecs.add_entity(position, name);
+    let id = add_entity(&mut ecs, position, name);
 
     let render_component = RenderComponent::new([1.0, 0.0, 0.0], 1.0);
     ecs.add_render_component(id, render_component.clone());
@@ -61,7 +89,7 @@ fn test_add_input_component() {
         z: 0.0,
     };
     let name = Name("Controllable".to_string());
-    let id = ecs.add_entity(position, name);
+    let id = add_entity(&mut ecs, position, name);
 
     let mut input_component = InputComponent::new(0.2);
     input_component.set_direction([0.0, 0.0, 1.0]);
@@ -83,7 +111,7 @@ fn test_add_model_component() {
         z: 0.0,
     };
     let name = Name("Model Holder".to_string());
-    let id = ecs.add_entity(position, name);
+    let id = add_entity(&mut ecs, position, name);
 
     let model_component = ModelComponent::new("assets/cube.obj");
     ecs.add_model_component(id, model_component.clone());
@@ -104,7 +132,7 @@ fn test_add_camera_component() {
         z: 0.0,
     };
     let name = Name("Camera".to_string());
-    let id = ecs.add_entity(position, name);
+    let id = add_entity(&mut ecs, position, name);
 
     let camera_component = CameraComponent::new(0.0, 0.0);
     ecs.add_camera_component(id, camera_component.clone());
@@ -125,7 +153,7 @@ fn test_add_terrain_component() {
         z: 0.0,
     };
     let name = Name("Terrain Holder".to_string());
-    let id = ecs.add_entity(position, name);
+    let id = add_entity(&mut ecs, position, name);
 
     let terrain_component = TerrainComponent::new(
         12.0,
@@ -152,7 +180,7 @@ fn test_add_script_component() {
         z: 0.0,
     };
     let name = Name("Scripted".to_string());
-    let id = ecs.add_entity(position, name);
+    let id = add_entity(&mut ecs, position, name);
 
     let script = ScriptComponent::new("test_behavior", 1.0);
     ecs.add_script_component(id, script.clone());
@@ -173,7 +201,7 @@ fn test_remove_render_component() {
         z: 0.0,
     };
     let name = Name("Renderable".to_string());
-    let id = ecs.add_entity(position, name);
+    let id = add_entity(&mut ecs, position, name);
 
     ecs.add_render_component(id, RenderComponent::new([1.0, 0.0, 0.0], 1.0));
     let (before_index, before_slot) = ecs.entity_to_location[&id];
@@ -194,7 +222,8 @@ fn test_remove_render_component() {
 fn test_remove_one_of_multiple_components_preserves_others() {
     let mut ecs = ECS::new();
 
-    let id = ecs.add_entity(
+    let id = add_entity(
+        &mut ecs,
         Position {
             x: 0.0,
             y: 0.0,
@@ -229,7 +258,7 @@ fn add_tag_using_ecs() {
         z: 0.0,
     };
     let name = Name("Finder".to_string());
-    let id = ecs.add_entity(position, name.clone());
+    let id = add_entity(&mut ecs, position, name.clone());
     ecs.tag_manager.add_tag(id, "player");
     let entities = ecs.tag_manager.get_entities_with_tag("player").unwrap();
     assert!(entities.contains(&id));
@@ -245,7 +274,7 @@ fn test_find_entity() {
         z: 0.0,
     };
     let name = Name("Finder".to_string());
-    let id = ecs.add_entity(position, name.clone());
+    let id = add_entity(&mut ecs, position, name.clone());
 
     // Find the entity
     let archetype = ecs.find_entity(id);
@@ -264,14 +293,15 @@ fn test_find_entity_components() {
         z: 0.0,
     };
     let name = Name("Component Checker".to_string());
-    let id = ecs.add_entity(position, name.clone());
+    let id = add_entity(&mut ecs, position, name.clone());
 
     // Find the components
     let components = ecs.find_entity_components(id);
 
     assert!(components.is_some());
-    let (pos, n) = components.unwrap();
+    let (pos, orientation, n) = components.unwrap();
     assert_eq!(pos, &position);
+    assert_eq!(orientation, &Orientation::identity());
     assert_eq!(n, &name);
 }
 
@@ -286,7 +316,7 @@ fn test_remove_entity() {
         z: 0.0,
     };
     let name = Name("Removable".to_string());
-    let id = ecs.add_entity(position, name.clone());
+    let id = add_entity(&mut ecs, position, name.clone());
 
     // Verify the entity exists in the archetype before removal
     let location = ecs.entity_to_location.get(&id).unwrap();
@@ -308,6 +338,7 @@ fn test_remove_entity() {
     assert!(!archetype.entity_ids.contains(&id));
     let len = archetype.entity_ids.len();
     assert_eq!(len, archetype.positions.len());
+    assert_eq!(len, archetype.orientations.len());
     assert_eq!(len, archetype.names.len());
     let optional_lengths = [
         archetype.renderables.as_ref().map(|c| c.len()),
@@ -337,7 +368,7 @@ fn test_reuse_entity_id() {
         z: 0.0,
     };
     let name = Name("Reusable".to_string());
-    let id = ecs.add_entity(position, name.clone());
+    let id = add_entity(&mut ecs, position, name.clone());
     ecs.remove_entity(id);
 
     // Add a new entity and check ID reuse
@@ -347,7 +378,7 @@ fn test_reuse_entity_id() {
         z: 0.0,
     };
     let new_name = Name("Reused".to_string());
-    let new_id = ecs.add_entity(new_position, new_name.clone());
+    let new_id = add_entity(&mut ecs, new_position, new_name.clone());
 
     assert_eq!(id, new_id);
     assert!(ecs.find_entity_components(new_id).is_some());
@@ -355,7 +386,8 @@ fn test_reuse_entity_id() {
 #[test]
 fn light_components_iterates_lights() {
     let mut ecs = ECS::new();
-    let entity = ecs.add_entity(
+    let entity = add_entity(
+        &mut ecs,
         Position {
             x: 0.0,
             y: 0.0,
@@ -378,7 +410,8 @@ fn light_components_iterates_lights() {
 #[test]
 fn terrain_components_iterates_terrains() {
     let mut ecs = ECS::new();
-    let entity = ecs.add_entity(
+    let entity = add_entity(
+        &mut ecs,
         Position {
             x: 0.0,
             y: 0.0,

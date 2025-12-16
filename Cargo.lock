@@ -1897,6 +1897,7 @@ name = "rust_game_app"
 version = "0.1.0"
 dependencies = [
  "env_logger",
+ "glam",
  "log",
  "rust_game",
 ]

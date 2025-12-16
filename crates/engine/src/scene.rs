@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::fmt;
 
 use crate::components::{
-    CameraComponent, InputComponent, LightComponent, ModelComponent, Name, PhysicsBodyType,
-    PhysicsComponent, Position, RenderComponent, ScriptComponent, TerrainComponent,
-    TextureComponent,
+    CameraComponent, InputComponent, LightComponent, ModelComponent, Name, Orientation,
+    PhysicsBodyType, PhysicsComponent, Position, RenderComponent, ScriptComponent,
+    TerrainComponent, TextureComponent,
 };
 use crate::ecs::ECS;
 
@@ -92,6 +92,7 @@ impl std::error::Error for SceneLookupError {}
 pub struct EntityDefinition {
     pub name: String,
     pub position: Position,
+    pub orientation: Orientation,
     pub tags: Vec<String>,
     pub components: ComponentDefinition,
 }
@@ -101,6 +102,7 @@ impl EntityDefinition {
         Self {
             name: name.into(),
             position,
+            orientation: Orientation::identity(),
             tags: Vec::new(),
             components: ComponentDefinition::default(),
         }
@@ -117,6 +119,11 @@ impl EntityDefinition {
 
     pub fn with_components(mut self, components: ComponentDefinition) -> Self {
         self.components = components;
+        self
+    }
+
+    pub fn with_orientation(mut self, orientation: Orientation) -> Self {
+        self.orientation = orientation;
         self
     }
 }
@@ -292,7 +299,7 @@ pub fn apply_scene_definition(scene: &SceneDefinition, ecs: &mut ECS) -> SceneSe
     for entity in &scene.entities {
         let position = entity.position;
         let base_height = position.y;
-        let entity_id = ecs.add_entity(position, Name(entity.name.clone()));
+        let entity_id = ecs.add_entity(position, entity.orientation, Name(entity.name.clone()));
 
         for tag in &entity.tags {
             ecs.tag_manager.add_tag(entity_id, tag);

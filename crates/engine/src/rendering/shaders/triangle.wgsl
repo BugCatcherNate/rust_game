@@ -42,6 +42,33 @@ var texture_map: texture_2d<f32>;
 @group(1) @binding(1)
 var texture_sampler: sampler;
 
+fn quat_mul(a: vec4<f32>, b: vec4<f32>) -> vec4<f32> {
+    return vec4<f32>(
+        a.w * b.x + a.x * b.w + a.y * b.z - a.z * b.y,
+        a.w * b.y - a.x * b.z + a.y * b.w + a.z * b.x,
+        a.w * b.z + a.x * b.y - a.y * b.x + a.z * b.w,
+        a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z,
+    );
+}
+
+fn quat_conjugate(q: vec4<f32>) -> vec4<f32> {
+    return vec4<f32>(-q.xyz, q.w);
+}
+
+fn normalize_quat(q: vec4<f32>) -> vec4<f32> {
+    let len_sq = dot(q, q);
+    if (len_sq <= 0.0) {
+        return vec4<f32>(0.0, 0.0, 0.0, 1.0);
+    }
+    return q / sqrt(len_sq);
+}
+
+fn rotate_vector(v: vec3<f32>, q: vec4<f32>) -> vec3<f32> {
+    let qv = vec4<f32>(v, 0.0);
+    let rotated = quat_mul(quat_mul(q, qv), quat_conjugate(q));
+    return rotated.xyz;
+}
+
 @vertex
 fn vs_main(
     @location(0) in_position: vec3<f32>,
@@ -50,12 +77,15 @@ fn vs_main(
     @location(3) instance_translation: vec3<f32>,
     @location(4) instance_scale: f32,
     @location(5) instance_color: vec3<f32>,
+    @location(6) instance_rotation: vec4<f32>,
 ) -> VertexOut {
     var out: VertexOut;
-    let world_pos = instance_translation + in_position * instance_scale;
+    let rotation = normalize_quat(instance_rotation);
+    let local_pos = rotate_vector(in_position * instance_scale, rotation);
+    let world_pos = instance_translation + local_pos;
     out.position = camera.view_proj * vec4(world_pos, 1.0);
     out.color = instance_color;
-    out.normal = normalize(in_normal);
+    out.normal = normalize(rotate_vector(in_normal, rotation));
     out.uv = in_uv;
     out.world_pos = world_pos;
     let eye = camera.eye_position.xyz;

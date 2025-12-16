@@ -268,12 +268,33 @@ struct InstanceRaw {
     scale: f32,
     color: [f32; 3],
     _padding: f32,
+    rotation: [f32; 4],
 }
 
 impl InstanceRaw {
     fn layout<'a>() -> wgpu::VertexBufferLayout<'a> {
-        const ATTRIBUTES: [wgpu::VertexAttribute; 3] =
-            wgpu::vertex_attr_array![3 => Float32x3, 4 => Float32, 5 => Float32x3];
+        const ATTRIBUTES: [wgpu::VertexAttribute; 4] = [
+            wgpu::VertexAttribute {
+                offset: 0,
+                shader_location: 3,
+                format: wgpu::VertexFormat::Float32x3,
+            },
+            wgpu::VertexAttribute {
+                offset: 12,
+                shader_location: 4,
+                format: wgpu::VertexFormat::Float32,
+            },
+            wgpu::VertexAttribute {
+                offset: 16,
+                shader_location: 5,
+                format: wgpu::VertexFormat::Float32x3,
+            },
+            wgpu::VertexAttribute {
+                offset: 32,
+                shader_location: 6,
+                format: wgpu::VertexFormat::Float32x4,
+            },
+        ];
         wgpu::VertexBufferLayout {
             array_stride: std::mem::size_of::<InstanceRaw>() as wgpu::BufferAddress,
             step_mode: wgpu::VertexStepMode::Instance,
@@ -528,6 +549,24 @@ pub struct DebugLine {
     pub start: [f32; 3],
     pub end: [f32; 3],
     pub color: [f32; 3],
+}
+
+#[derive(Debug, Clone)]
+pub enum DebugGizmo {
+    WireBox {
+        center: [f32; 3],
+        half_extents: [f32; 3],
+        color: [f32; 3],
+    },
+    WireSphere {
+        center: [f32; 3],
+        radius: f32,
+        color: [f32; 3],
+    },
+    Label {
+        position: [f32; 3],
+        text: String,
+    },
 }
 
 pub struct Renderer {
@@ -1114,11 +1153,13 @@ impl Renderer {
                         model: model.asset_path.clone(),
                         texture: texture.map(|t| t.asset_path.clone()),
                     };
+                    let orientation = archetype.orientations[index];
                     grouped_instances.entry(key).or_default().push(InstanceRaw {
                         translation: position.as_array(),
                         scale: renderable.size,
                         color: renderable.color,
                         _padding: 0.0,
+                        rotation: orientation.as_array(),
                     });
                 }
             }

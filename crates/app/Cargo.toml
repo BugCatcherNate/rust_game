@@ -7,3 +7,4 @@ edition = "2021"
 rust_game = { path = "../engine" }
 env_logger = { workspace = true }
 log = { workspace = true }
+glam = { workspace = true }

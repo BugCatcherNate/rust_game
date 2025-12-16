@@ -8,7 +8,10 @@ impl RenderPrepSystem {
         renderer.update_scene(ecs);
         renderer.update_lighting(ecs);
         if let Some(id) = camera_entity {
-            if let Some(position) = ecs.find_entity_components(id).map(|(position, _)| position) {
+            if let Some(position) = ecs
+                .find_entity_components(id)
+                .map(|(position, _, _)| position)
+            {
                 if let Some(camera) = ecs.camera_component(id) {
                     renderer.update_camera(position, camera);
                 }

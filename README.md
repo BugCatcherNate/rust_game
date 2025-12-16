@@ -21,8 +21,9 @@ An experiment-sized first-person game built on a lightweight Rust engine. The wo
 - **Physics & interaction** powered by `rapier3d`, now with ray casts exposed through the engine for gameplay queries (shooting, selection) plus automatic collider wireframes to visualize half-extents.
 - **Material-aware model loading**: the OBJ loader consumes paired MTL data, resolves diffuse textures per material, and renders each segment with its own atlas (while still allowing manual texture overrides).
 - **Shooting gameplay**: left-click fires a physics ray, renders a debug trace, and emits events processed by `ShootingSystem` to destroy tagged targets.
-- **Custom systems & scripting** keep gameplay separated from the engine loop; systems can subscribe to events like `ShotEvent` without tight coupling.
+- **Custom systems & scripting** keep gameplay separated from the engine loop; systems can subscribe to events like `ShotEvent` without tight coupling while emitting debug gizmos (boxes, spheres, labels) to visualize logic live.
 - **Audio & scene data**: ambient sounds via `rodio`, plus data-driven scenes using `SceneDefinition` builders or YAML assets.
+- **Per-entity rotation & scripting**: instanced models now track a quaternion-based `Orientation` component, so scripts can spin or tilt meshes at runtime (the sample target uses a `spinner` script to rotate in place).
 + **Runtime debug controls**: the in-game console can toggle collider lines (`debuglines [on|off|toggle]`) and activate creative mode to inspect the scene freely.
 
 ## Building & Running
@@ -48,7 +49,7 @@ An experiment-sized first-person game built on a lightweight Rust engine. The wo
 | --- | --- | --- |
 | Application loop | Configures windowing, input, renderer, physics, audio, scripts, and custom systems. Runs the update/render cycle inside the `winit` event loop. | `crates/engine/src/app.rs` |
 | ECS | Entity storage, component management, archetype iteration, tagging, memory reporting. | `crates/engine/src/ecs` |
-| Components | Definitions and runtime storage for `Position`, `Render`, `Model`, `Camera`, `Input`, `Light`, `Texture`, `Terrain`, `Script`, `Physics`. | `crates/engine/src/components` |
+| Components | Definitions and runtime storage for `Position`, `Orientation`, `Render`, `Model`, `Camera`, `Input`, `Light`, `Texture`, `Terrain`, `Script`, `Physics`. | `crates/engine/src/components` |
 | Systems | Runtime behavior for camera input, movement, physics integration, render prep, scripting. | `crates/engine/src/systems` |
 | Scene pipeline | Converts `SceneDefinition` data (Rust builders or YAML) into populated ECS entities and scene settings (fog, background gradient, audio). | `crates/engine/src/scene.rs` |
 | Rendering | `Renderer` abstraction on top of `wgpu`, handles geometry buffers, textures, lighting, camera matrices, UI text. | `crates/engine/src/rendering` |
@@ -65,7 +66,7 @@ impl CustomSystem for MySystem {
 
     fn update(&mut self, ecs: &mut ECS, scene: &str, commands: &mut Vec<ScriptCommand>) {
         // Read/write ECS data, queue ScriptCommand::LoadScene, ::DebugLine,
-        // ::RemoveComponent, etc.
+        // ::DebugGizmo, ::RemoveComponent, etc.
     }
 
     fn hud_text(&mut self, ecs: &ECS, scene: &str) -> Option<String> {
@@ -112,7 +113,7 @@ Systems can publish gameplay events for other systems to react to without direct
 
 ## Game-Specific Logic
 
-`crates/app/src/main.rs` builds a minimal combat sandbox: a player entity with FPS controls, a target with a collider, basic terrain, a sun light, and a textured tree prop imported from `assets/tree.obj`. `ShootingSystem` consumes shot events to destroy anything tagged `target`, keeping a running HUD tally. The renderer overlays each ray as a debug line so you can see exactly where shots travel, and per-body wireframes make collider tuning straightforward.
+`crates/app/src/main.rs` builds a minimal combat sandbox: a player entity with FPS controls, a target with a collider, basic terrain, a sun light, and a textured tree prop imported from `assets/tree.obj`. The target entity now opts into the `spinner` script, which steadily updates its orientation so you can see script-driven rotations in action. `ShootingSystem` consumes shot events to destroy anything tagged `target`, keeping a running HUD tally. The renderer overlays each ray as a debug line so you can see exactly where shots travel, and per-body wireframes make collider tuning straightforward.
 
 Additional YAML scenes in `assets/scene.yml`, `assets/other_scene.yml`, and `assets/labyrinth.yml` showcase a data-driven format for entities that mirrors the Rust builders.
 

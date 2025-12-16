@@ -54,6 +54,9 @@ impl ScriptingSystem {
                 let Some(position) = archetype.positions.get_mut(index) else {
                     continue;
                 };
+                let Some(orientation) = archetype.orientations.get_mut(index) else {
+                    continue;
+                };
 
                 let name: &Name = &archetype.names[index];
                 let render: Option<&RenderComponent> = archetype
@@ -86,7 +89,7 @@ impl ScriptingSystem {
                 };
 
                 script_commands.clear();
-                script.update(ctx, position, &mut script_commands);
+                script.update(ctx, position, orientation, &mut script_commands);
                 self.pending_commands.extend(script_commands.drain(..));
             }
         }

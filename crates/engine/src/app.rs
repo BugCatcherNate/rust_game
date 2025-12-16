@@ -7,7 +7,7 @@ use crate::components::{
     CameraComponent, PhysicsBodyType, PhysicsComponent, Position, ScriptComponent,
 };
 use crate::ecs::{ComponentKind, ECS};
-use crate::rendering::{DebugLine, Renderer};
+use crate::rendering::{DebugGizmo, DebugLine, Renderer};
 use crate::scene::{self, SceneLibrary, SceneLookupError};
 use crate::scripts::{ScriptCommand, ScriptRegistry};
 use crate::systems::{
@@ -182,6 +182,8 @@ struct GameApp {
     custom_systems: Vec<Box<dyn CustomSystem>>,
     custom_command_buffer: Vec<ScriptCommand>,
     debug_lines: Vec<DebugLine>,
+    debug_gizmos: Vec<DebugGizmo>,
+    debug_text_labels: Vec<String>,
     debug_lines_enabled: bool,
     console_open: bool,
     console_input: String,
@@ -226,6 +228,8 @@ impl GameApp {
             custom_systems,
             custom_command_buffer: Vec::new(),
             debug_lines: Vec::new(),
+            debug_gizmos: Vec::new(),
+            debug_text_labels: Vec::new(),
             debug_lines_enabled: true,
             console_open: false,
             console_input: String::new(),
@@ -513,13 +517,13 @@ impl GameApp {
         if self.printed_state {
             return;
         }
-        if let Some((position, name)) = self.ecs.find_entity_components(self.player_id) {
+        if let Some((position, _, name)) = self.ecs.find_entity_components(self.player_id) {
             info!(
                 "After movement, entity {:?} is at position {:?}",
                 name, position
             );
         }
-        if let Some((position, name)) = self.ecs.find_entity_components(self.camera_id) {
+        if let Some((position, _, name)) = self.ecs.find_entity_components(self.camera_id) {
             info!(
                 "After movement, entity {:?} is at position {:?}",
                 name, position
@@ -636,7 +640,7 @@ impl GameApp {
     }
 
     fn handle_fire(&mut self) {
-        let Some((position, _)) = self.ecs.find_entity_components(self.camera_id) else {
+        let Some((position, _, _)) = self.ecs.find_entity_components(self.camera_id) else {
             return;
         };
         let Some(camera) = self.ecs.camera_component(self.camera_id) else {
@@ -666,6 +670,15 @@ impl GameApp {
                 "Shot hit entity {} at ({:.2}, {:.2}, {:.2})",
                 hit.entity_id, hit.point[0], hit.point[1], hit.point[2]
             );
+            self.debug_gizmos.push(DebugGizmo::WireSphere {
+                center: hit.point,
+                radius: 0.25,
+                color: [1.0, 0.3, 0.3],
+            });
+            self.debug_gizmos.push(DebugGizmo::Label {
+                position: hit.point,
+                text: format!("Hit {}", hit.entity_id),
+            });
             hit_result = Some(ShotEventHit {
                 entity_id: hit.entity_id,
                 point: hit.point,
@@ -686,8 +699,7 @@ impl GameApp {
         });
     }
 
-    fn append_physics_debug_boxes(&mut self) {
-        let mut boxes = Vec::new();
+    fn queue_physics_gizmos(&mut self) {
         for archetype in &self.ecs.archetypes {
             let Some(physics_components) = &archetype.physics else {
                 continue;
@@ -695,28 +707,66 @@ impl GameApp {
             for (index, physics) in physics_components.iter().enumerate() {
                 let position = archetype.positions[index];
                 let color = Self::debug_color_for_body(physics.body_type);
-                Self::add_box_lines(&mut boxes, position, physics.half_extents, color);
+                self.debug_gizmos.push(DebugGizmo::WireBox {
+                    center: position.as_array(),
+                    half_extents: physics.half_extents,
+                    color,
+                });
             }
         }
-        self.debug_lines.extend(boxes);
+    }
+
+    fn flush_debug_gizmos(&mut self) {
+        if !self.debug_lines_enabled {
+            self.debug_gizmos.clear();
+            self.debug_text_labels.clear();
+            return;
+        }
+        if self.debug_gizmos.is_empty() {
+            self.debug_text_labels.clear();
+            return;
+        }
+        let mut derived_lines = Vec::new();
+        self.debug_text_labels.clear();
+        for gizmo in self.debug_gizmos.drain(..) {
+            match gizmo {
+                DebugGizmo::WireBox {
+                    center,
+                    half_extents,
+                    color,
+                } => Self::add_box_lines(&mut derived_lines, center, half_extents, color),
+                DebugGizmo::WireSphere {
+                    center,
+                    radius,
+                    color,
+                } => Self::add_sphere_lines(&mut derived_lines, center, radius, color),
+                DebugGizmo::Label { position, text } => {
+                    self.debug_text_labels.push(format!(
+                        "{} @ ({:.2}, {:.2}, {:.2})",
+                        text, position[0], position[1], position[2]
+                    ));
+                }
+            }
+        }
+        self.debug_lines.extend(derived_lines);
     }
 
     fn add_box_lines(
         lines: &mut Vec<DebugLine>,
-        center: Position,
+        center: [f32; 3],
         half_extents: [f32; 3],
         color: [f32; 3],
     ) {
         let [hx, hy, hz] = half_extents;
         let corners = [
-            [center.x - hx, center.y - hy, center.z - hz],
-            [center.x + hx, center.y - hy, center.z - hz],
-            [center.x + hx, center.y - hy, center.z + hz],
-            [center.x - hx, center.y - hy, center.z + hz],
-            [center.x - hx, center.y + hy, center.z - hz],
-            [center.x + hx, center.y + hy, center.z - hz],
-            [center.x + hx, center.y + hy, center.z + hz],
-            [center.x - hx, center.y + hy, center.z + hz],
+            [center[0] - hx, center[1] - hy, center[2] - hz],
+            [center[0] + hx, center[1] - hy, center[2] - hz],
+            [center[0] + hx, center[1] - hy, center[2] + hz],
+            [center[0] - hx, center[1] - hy, center[2] + hz],
+            [center[0] - hx, center[1] + hy, center[2] - hz],
+            [center[0] + hx, center[1] + hy, center[2] - hz],
+            [center[0] + hx, center[1] + hy, center[2] + hz],
+            [center[0] - hx, center[1] + hy, center[2] + hz],
         ];
         const EDGES: [(usize, usize); 12] = [
             (0, 1),
@@ -749,6 +799,57 @@ impl GameApp {
         }
     }
 
+    fn add_sphere_lines(
+        lines: &mut Vec<DebugLine>,
+        center: [f32; 3],
+        radius: f32,
+        color: [f32; 3],
+    ) {
+        const SEGMENTS: usize = 32;
+        for plane in [CirclePlane::XY, CirclePlane::XZ, CirclePlane::YZ] {
+            Self::add_circle(lines, center, radius, color, plane, SEGMENTS);
+        }
+    }
+
+    fn add_circle(
+        lines: &mut Vec<DebugLine>,
+        center: [f32; 3],
+        radius: f32,
+        color: [f32; 3],
+        plane: CirclePlane,
+        segments: usize,
+    ) {
+        let step = std::f32::consts::TAU / segments as f32;
+        let mut prev = None;
+        for i in 0..=segments {
+            let angle = i as f32 * step;
+            let mut point = center;
+            let (sin, cos) = angle.sin_cos();
+            match plane {
+                CirclePlane::XY => {
+                    point[0] += radius * cos;
+                    point[1] += radius * sin;
+                }
+                CirclePlane::XZ => {
+                    point[0] += radius * cos;
+                    point[2] += radius * sin;
+                }
+                CirclePlane::YZ => {
+                    point[1] += radius * cos;
+                    point[2] += radius * sin;
+                }
+            }
+            if let Some(previous) = prev {
+                lines.push(DebugLine {
+                    start: previous,
+                    end: point,
+                    color,
+                });
+            }
+            prev = Some(point);
+        }
+    }
+
     fn camera_forward(camera: &CameraComponent) -> [f32; 3] {
         let cos_pitch = camera.pitch.cos();
         [
@@ -768,7 +869,7 @@ impl GameApp {
                 self.scene_settings.fog_color,
                 self.scene_settings.fog_density,
             );
-            if let Some((position, _)) = self.ecs.find_entity_components(self.camera_id) {
+            if let Some((position, _, _)) = self.ecs.find_entity_components(self.camera_id) {
                 if let Some(camera) = self.ecs.camera_component(self.camera_id) {
                     renderer.update_camera(position, camera);
                     renderer.set_ui_text(Self::build_hud_text(position, camera));
@@ -794,7 +895,7 @@ impl GameApp {
             let base_height = self
                 .ecs
                 .find_entity_components(entity_id)
-                .map(|(position, _)| position.y)
+                .map(|(position, _, _)| position.y)
                 .unwrap_or(0.0);
             let component = ScriptComponent::with_params(
                 binding.script.clone(),
@@ -835,6 +936,9 @@ impl GameApp {
                 ScriptCommand::DebugLine(line) => {
                     self.debug_lines.push(line);
                 }
+                ScriptCommand::DebugGizmo(gizmo) => {
+                    self.debug_gizmos.push(gizmo);
+                }
             }
         }
         scene_changed
@@ -853,6 +957,13 @@ impl GameApp {
             ComponentKind::Physics => self.ecs.remove_physics_component(entity_id),
         }
     }
+}
+
+#[derive(Copy, Clone)]
+enum CirclePlane {
+    XY,
+    XZ,
+    YZ,
 }
 
 impl ApplicationHandler for GameApp {
@@ -1004,8 +1115,11 @@ impl ApplicationHandler for GameApp {
                     String::new()
                 };
                 if self.debug_lines_enabled {
-                    self.append_physics_debug_boxes();
+                    self.queue_physics_gizmos();
+                } else {
+                    self.debug_gizmos.clear();
                 }
+                self.flush_debug_gizmos();
                 if let Some(renderer) = self.renderer.as_mut() {
                     RenderPrepSystem::update(renderer, &self.ecs, Some(self.camera_id));
                     if self.debug_lines_enabled {
@@ -1013,7 +1127,8 @@ impl ApplicationHandler for GameApp {
                     } else {
                         renderer.set_debug_lines(&[]);
                     }
-                    if let Some((position, _)) = self.ecs.find_entity_components(self.camera_id) {
+                    if let Some((position, _, _)) = self.ecs.find_entity_components(self.camera_id)
+                    {
                         if let Some(camera) = self.ecs.camera_component(self.camera_id) {
                             let default_text = Self::build_hud_text(position, camera);
                             let mut custom_sections = Vec::new();
@@ -1032,12 +1147,20 @@ impl ApplicationHandler for GameApp {
                             }
                         }
                     }
-                    renderer.set_bottom_ui_text(console_overlay);
+                    let mut bottom_sections = Vec::new();
+                    if !self.debug_text_labels.is_empty() {
+                        bottom_sections.push(self.debug_text_labels.join("\n"));
+                    }
+                    if !console_overlay.is_empty() {
+                        bottom_sections.push(console_overlay);
+                    }
+                    renderer.set_bottom_ui_text(bottom_sections.join("\n\n"));
                     if let Err(err) = renderer.render() {
                         self.handle_render_error(event_loop, err);
                     }
                 }
                 self.debug_lines.clear();
+                self.debug_text_labels.clear();
                 self.log_entity_state_once();
             }
             _ => {}

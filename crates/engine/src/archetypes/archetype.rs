@@ -1,6 +1,7 @@
 use crate::components::{
-    CameraComponent, InputComponent, LightComponent, ModelComponent, Name, PhysicsComponent,
-    Position, RenderComponent, ScriptComponent, TerrainComponent, TextureComponent,
+    CameraComponent, InputComponent, LightComponent, ModelComponent, Name, Orientation,
+    PhysicsComponent, Position, RenderComponent, ScriptComponent, TerrainComponent,
+    TextureComponent,
 };
 use crate::ecs::{ComponentKind, ComponentSignature};
 
@@ -8,6 +9,7 @@ use crate::ecs::{ComponentKind, ComponentSignature};
 pub struct EntityComponents {
     pub id: u32,
     pub position: Position,
+    pub orientation: Orientation,
     pub name: Name,
     pub render: Option<RenderComponent>,
     pub input: Option<InputComponent>,
@@ -21,10 +23,11 @@ pub struct EntityComponents {
 }
 
 impl EntityComponents {
-    pub fn base(id: u32, position: Position, name: Name) -> Self {
+    pub fn base(id: u32, position: Position, orientation: Orientation, name: Name) -> Self {
         Self {
             id,
             position,
+            orientation,
             name,
             render: None,
             input: None,
@@ -44,6 +47,7 @@ pub struct Archetype {
     pub signature: ComponentSignature,
     pub entity_ids: Vec<u32>,
     pub positions: Vec<Position>,
+    pub orientations: Vec<Orientation>,
     pub names: Vec<Name>,
     pub renderables: Option<Vec<RenderComponent>>,
     pub inputs: Option<Vec<InputComponent>>,
@@ -62,6 +66,7 @@ impl Archetype {
             signature,
             entity_ids: Vec::new(),
             positions: Vec::new(),
+            orientations: Vec::new(),
             names: Vec::new(),
             renderables: signature
                 .contains(ComponentKind::Render)
@@ -96,6 +101,7 @@ impl Archetype {
         let EntityComponents {
             id,
             position,
+            orientation,
             name,
             render,
             input,
@@ -110,6 +116,7 @@ impl Archetype {
 
         self.entity_ids.push(id);
         self.positions.push(position);
+        self.orientations.push(orientation);
         self.names.push(name);
         if let Some(renderables) = self.renderables.as_mut() {
             renderables.push(render.expect("render component missing for signature"));
@@ -162,6 +169,7 @@ impl Archetype {
     pub fn swap_remove_entity(&mut self, index: usize) -> (EntityComponents, Option<u32>) {
         let id = self.entity_ids.swap_remove(index);
         let position = self.positions.swap_remove(index);
+        let orientation = self.orientations.swap_remove(index);
         let name = self.names.swap_remove(index);
 
         let render = self
@@ -202,6 +210,7 @@ impl Archetype {
             EntityComponents {
                 id,
                 position,
+                orientation,
                 name,
                 render,
                 input,

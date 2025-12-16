@@ -1,7 +1,8 @@
 use crate::archetypes::{Archetype, EntityComponents};
 use crate::components::{
-    CameraComponent, InputComponent, LightComponent, ModelComponent, Name, PhysicsComponent,
-    Position, RenderComponent, ScriptComponent, TerrainComponent, TextureComponent,
+    CameraComponent, InputComponent, LightComponent, ModelComponent, Name, Orientation,
+    PhysicsComponent, Position, RenderComponent, ScriptComponent, TerrainComponent,
+    TextureComponent,
 };
 use crate::ecs::entity_manager::EntityManager;
 use crate::ecs::event_bus::EventBus;
@@ -58,11 +59,11 @@ impl ECS {
         self.event_bus.drain::<E>()
     }
 
-    pub fn add_entity(&mut self, position: Position, name: Name) -> u32 {
+    pub fn add_entity(&mut self, position: Position, orientation: Orientation, name: Name) -> u32 {
         let id = self.entity_manager.create_entity();
         let archetype_index = self.get_or_create_archetype(ComponentSignature::empty());
         let index_within_archetype = self.archetypes[archetype_index]
-            .push_entity(EntityComponents::base(id, position, name));
+            .push_entity(EntityComponents::base(id, position, orientation, name));
         self.entity_to_location
             .insert(id, (archetype_index, index_within_archetype));
         debug!(
@@ -81,11 +82,12 @@ impl ECS {
         }
     }
 
-    pub fn find_entity_components(&self, id: u32) -> Option<(&Position, &Name)> {
+    pub fn find_entity_components(&self, id: u32) -> Option<(&Position, &Orientation, &Name)> {
         if let Some(&(archetype_index, index_within_archetype)) = self.entity_to_location.get(&id) {
             let archetype = &self.archetypes[archetype_index];
             Some((
                 &archetype.positions[index_within_archetype],
+                &archetype.orientations[index_within_archetype],
                 &archetype.names[index_within_archetype],
             ))
         } else {
@@ -270,6 +272,24 @@ impl ECS {
         if let Some(&(archetype_index, index_within_archetype)) = self.entity_to_location.get(&id) {
             if let Some(archetype) = self.archetypes.get_mut(archetype_index) {
                 return archetype.positions.get_mut(index_within_archetype);
+            }
+        }
+        None
+    }
+
+    pub fn orientation_component_mut(&mut self, id: u32) -> Option<&mut Orientation> {
+        if let Some(&(archetype_index, index_within_archetype)) = self.entity_to_location.get(&id) {
+            if let Some(archetype) = self.archetypes.get_mut(archetype_index) {
+                return archetype.orientations.get_mut(index_within_archetype);
+            }
+        }
+        None
+    }
+
+    pub fn orientation_component(&self, id: u32) -> Option<&Orientation> {
+        if let Some(&(archetype_index, index_within_archetype)) = self.entity_to_location.get(&id) {
+            if let Some(archetype) = self.archetypes.get(archetype_index) {
+                return archetype.orientations.get(index_within_archetype);
             }
         }
         None

@@ -1,8 +1,9 @@
 use std::mem;
 
 use crate::components::{
-    CameraComponent, InputComponent, LightComponent, ModelComponent, Name, PhysicsComponent,
-    Position, RenderComponent, ScriptComponent, TerrainComponent, TextureComponent,
+    CameraComponent, InputComponent, LightComponent, ModelComponent, Name, Orientation,
+    PhysicsComponent, Position, RenderComponent, ScriptComponent, TerrainComponent,
+    TextureComponent,
 };
 
 use super::ECS;
@@ -30,6 +31,7 @@ impl ECS {
                 let mut total = 0usize;
 
                 total += push_usage::<Position>("Position", true, &mut components);
+                total += push_usage::<Orientation>("Orientation", true, &mut components);
                 total += push_usage::<Name>("Name", true, &mut components);
 
                 total += push_usage::<RenderComponent>(

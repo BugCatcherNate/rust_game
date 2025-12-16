@@ -1,9 +1,9 @@
 use std::any::Any;
 use std::collections::HashMap;
 
-use crate::components::{Position, RenderComponent};
+use crate::components::{Orientation, Position, RenderComponent};
 use crate::ecs::ComponentKind;
-use crate::rendering::DebugLine;
+use crate::rendering::{DebugGizmo, DebugLine};
 
 #[allow(dead_code)]
 pub struct ScriptEntityContext<'a> {
@@ -41,6 +41,7 @@ pub enum ScriptCommand {
     },
     EmitEvent(Box<dyn Any + Send>),
     DebugLine(DebugLine),
+    DebugGizmo(DebugGizmo),
 }
 
 pub trait ScriptBehavior {
@@ -48,6 +49,7 @@ pub trait ScriptBehavior {
         &mut self,
         ctx: ScriptContext<'_>,
         position: &mut Position,
+        orientation: &mut Orientation,
         commands: &mut Vec<ScriptCommand>,
     );
 }

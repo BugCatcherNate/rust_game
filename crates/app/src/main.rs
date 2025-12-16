@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
+use glam::Quat;
 use rust_game::app::{run_game, CustomSystem, GameConfig, ShotEvent};
-use rust_game::components::{PhysicsBodyType, Position};
+use rust_game::components::{Orientation, PhysicsBodyType, Position};
 use rust_game::ecs::ECS;
 use rust_game::math::normalize_vec3;
 use rust_game::modules;
@@ -9,14 +10,15 @@ use rust_game::scene::{
     CameraComponentDefinition, ComponentDefinition, EntityDefinition, InputComponentDefinition,
     LightComponentDefinition, ModelComponentDefinition, PhysicsComponentDefinition,
     RenderComponentDefinition, SceneDefinition, SceneLibrary, SceneSettings,
-    TerrainComponentDefinition,
+    ScriptComponentDefinition, TerrainComponentDefinition,
 };
-use rust_game::scripts::{ScriptCommand, ScriptRegistry};
+use rust_game::scripts::{ScriptBehavior, ScriptCommand, ScriptContext, ScriptRegistry};
 
 const LABYRINTH_SCENE_ID: &str = "labyrinth";
 
 fn build_script_registry() -> Arc<ScriptRegistry> {
-    let registry = ScriptRegistry::new();
+    let mut registry = ScriptRegistry::new();
+    registry.register_script("spinner", || Box::new(SpinnerScript::default()));
     Arc::new(registry)
 }
 
@@ -119,6 +121,8 @@ fn target() -> EntityDefinition {
     entity.components.model = Some(ModelComponentDefinition {
         asset: "assets/cube.obj".to_string(),
     });
+    entity.components.script =
+        Some(ScriptComponentDefinition::new("spinner").with_param("speed", "0.75"));
     entity
 }
 fn sun_light() -> EntityDefinition {
@@ -149,6 +153,11 @@ fn tree_prop() -> EntityDefinition {
         },
     )
     .with_tags(["prop"])
+    .with_orientation(Orientation::from_yaw_pitch_roll(
+        std::f32::consts::FRAC_PI_4,
+        0.0,
+        0.0,
+    ))
     .with_components(ComponentDefinition {
         render: Some(RenderComponentDefinition {
             color: [0.3, 0.6, 0.2],
@@ -176,6 +185,28 @@ fn target_entity(name: &str, position: Position) -> EntityDefinition {
             }),
             ..Default::default()
         })
+}
+
+#[derive(Default)]
+struct SpinnerScript;
+
+impl ScriptBehavior for SpinnerScript {
+    fn update(
+        &mut self,
+        ctx: ScriptContext<'_>,
+        _position: &mut Position,
+        orientation: &mut Orientation,
+        _commands: &mut Vec<ScriptCommand>,
+    ) {
+        let speed = ctx
+            .params
+            .get("speed")
+            .and_then(|value| value.parse::<f32>().ok())
+            .unwrap_or(1.0);
+        let delta = speed * ctx.dt;
+        let rotation = Quat::from_rotation_y(delta);
+        orientation.set_quat(rotation * orientation.quat());
+    }
 }
 
 fn directional_light(
