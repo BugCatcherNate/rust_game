@@ -2,11 +2,12 @@ use std::collections::HashMap;
 use std::fmt;
 
 use crate::components::{
-    CameraComponent, InputComponent, LightComponent, ModelComponent, Name, Orientation,
-    PhysicsBodyType, PhysicsComponent, Position, RenderComponent, ScriptComponent,
+    CameraComponent, HierarchyComponent, InputComponent, LightComponent, ModelComponent, Name,
+    Orientation, PhysicsBodyType, PhysicsComponent, Position, RenderComponent, ScriptComponent,
     TerrainComponent, TextureComponent,
 };
 use crate::ecs::ECS;
+use log::warn;
 
 #[derive(Debug, Clone)]
 pub struct SceneDefinition {
@@ -93,6 +94,7 @@ pub struct EntityDefinition {
     pub name: String,
     pub position: Position,
     pub orientation: Orientation,
+    pub parent: Option<String>,
     pub tags: Vec<String>,
     pub components: ComponentDefinition,
 }
@@ -103,6 +105,7 @@ impl EntityDefinition {
             name: name.into(),
             position,
             orientation: Orientation::identity(),
+            parent: None,
             tags: Vec::new(),
             components: ComponentDefinition::default(),
         }
@@ -124,6 +127,11 @@ impl EntityDefinition {
 
     pub fn with_orientation(mut self, orientation: Orientation) -> Self {
         self.orientation = orientation;
+        self
+    }
+
+    pub fn with_parent(mut self, parent: impl Into<String>) -> Self {
+        self.parent = Some(parent.into());
         self
     }
 }
@@ -296,126 +304,183 @@ fn default_physics_half_extents() -> [f32; 3] {
 }
 
 pub fn apply_scene_definition(scene: &SceneDefinition, ecs: &mut ECS) -> SceneSettings {
+    let mut name_to_entity = HashMap::new();
+    let mut ordered_ids = Vec::with_capacity(scene.entities.len());
+
     for entity in &scene.entities {
-        let position = entity.position;
-        let base_height = position.y;
-        let entity_id = ecs.add_entity(position, entity.orientation, Name(entity.name.clone()));
-
-        for tag in &entity.tags {
-            ecs.tag_manager.add_tag(entity_id, tag);
-        }
-
-        let components = &entity.components;
-        let mut render_cfg = components.render.clone();
-        let mut model_cfg = components.model.clone();
-        let mut texture_cfg = components.texture.clone();
-
-        if let Some(terrain_cfg) = components.terrain.as_ref() {
-            if render_cfg.is_none() {
-                render_cfg = Some(RenderComponentDefinition {
-                    color: terrain_cfg.color,
-                    size: terrain_cfg.size,
-                });
-            }
-
-            if model_cfg.is_none() {
-                model_cfg = Some(ModelComponentDefinition {
-                    asset: terrain_cfg.model_asset.clone(),
-                });
-            }
-
-            if texture_cfg.is_none() {
-                if let Some(texture_asset) = &terrain_cfg.texture {
-                    texture_cfg = Some(TextureComponentDefinition {
-                        asset: texture_asset.clone(),
-                    });
-                }
-            }
-
-            ecs.add_terrain_component(
-                entity_id,
-                TerrainComponent::new(
-                    terrain_cfg.size,
-                    terrain_cfg.height,
-                    terrain_cfg.color,
-                    terrain_cfg.texture.clone(),
-                    terrain_cfg.model_asset.clone(),
-                ),
-            );
-        }
-
-        if let Some(physics_cfg) = components.physics.as_ref() {
-            let resolved_half_extents = resolve_physics_half_extents(
-                physics_cfg.half_extents,
-                render_cfg.as_ref(),
-                components.terrain.as_ref(),
-            );
-            let mut physics = PhysicsComponent::new(physics_cfg.body_type, resolved_half_extents);
-            physics.restitution = physics_cfg.restitution;
-            physics.friction = physics_cfg.friction;
-            ecs.add_physics_component(entity_id, physics);
-        }
-
-        if let Some(render_cfg) = render_cfg {
-            ecs.add_render_component(
-                entity_id,
-                RenderComponent::new(render_cfg.color, render_cfg.size),
-            );
-        }
-
-        if let Some(model_cfg) = model_cfg {
-            ecs.add_model_component(entity_id, ModelComponent::new(model_cfg.asset));
-        }
-
-        if let Some(camera_cfg) = components.camera.as_ref() {
-            let mut camera = CameraComponent::new(
-                camera_cfg.yaw.unwrap_or(0.0),
-                camera_cfg.pitch.unwrap_or(0.0),
-            );
-            if let Some(speed) = camera_cfg.move_speed {
-                camera.move_speed = speed;
-            }
-            if let Some(look) = camera_cfg.look_sensitivity {
-                camera.look_sensitivity = look;
-            }
-            ecs.add_camera_component(entity_id, camera);
-        }
-
-        if let Some(input_cfg) = components.input.as_ref() {
-            let speed = input_cfg.speed.unwrap_or(0.05);
-            ecs.add_input_component(entity_id, InputComponent::new(speed));
-        }
-
-        if let Some(light_cfg) = components.light.as_ref() {
-            let component = if let Some(radius) = light_cfg.point_radius {
-                LightComponent::point(radius, light_cfg.color, light_cfg.intensity)
-            } else {
-                LightComponent::directional(
-                    light_cfg.direction,
-                    light_cfg.color,
-                    light_cfg.intensity,
-                )
-            };
-            ecs.add_light_component(entity_id, component);
-        }
-
-        if let Some(texture_cfg) = texture_cfg {
-            ecs.add_texture_component(entity_id, TextureComponent::new(texture_cfg.asset));
-        }
-
-        if let Some(script_cfg) = components.script.as_ref() {
-            ecs.add_script_component(
-                entity_id,
-                ScriptComponent::with_params(
-                    script_cfg.name.clone(),
-                    base_height,
-                    script_cfg.params.clone(),
-                ),
-            );
-        }
+        let entity_id = spawn_entity_from_definition(ecs, entity);
+        name_to_entity.insert(entity.name.clone(), entity_id);
+        ordered_ids.push(entity_id);
     }
 
+    attach_entity_hierarchies(scene, ecs, &ordered_ids, &name_to_entity);
+
     scene.settings.clone()
+}
+
+fn spawn_entity_from_definition(ecs: &mut ECS, entity: &EntityDefinition) -> u32 {
+    let position = entity.position;
+    let base_height = position.y;
+    let entity_id = ecs.add_entity(position, entity.orientation, Name(entity.name.clone()));
+
+    for tag in &entity.tags {
+        ecs.tag_manager.add_tag(entity_id, tag);
+    }
+
+    let components = &entity.components;
+    let mut render_cfg = components.render.clone();
+    let mut model_cfg = components.model.clone();
+    let mut texture_cfg = components.texture.clone();
+
+    if let Some(terrain_cfg) = components.terrain.as_ref() {
+        if render_cfg.is_none() {
+            render_cfg = Some(RenderComponentDefinition {
+                color: terrain_cfg.color,
+                size: terrain_cfg.size,
+            });
+        }
+
+        if model_cfg.is_none() {
+            model_cfg = Some(ModelComponentDefinition {
+                asset: terrain_cfg.model_asset.clone(),
+            });
+        }
+
+        if texture_cfg.is_none() {
+            if let Some(texture_asset) = &terrain_cfg.texture {
+                texture_cfg = Some(TextureComponentDefinition {
+                    asset: texture_asset.clone(),
+                });
+            }
+        }
+
+        ecs.add_terrain_component(
+            entity_id,
+            TerrainComponent::new(
+                terrain_cfg.size,
+                terrain_cfg.height,
+                terrain_cfg.color,
+                terrain_cfg.texture.clone(),
+                terrain_cfg.model_asset.clone(),
+            ),
+        );
+    }
+
+    if let Some(physics_cfg) = components.physics.as_ref() {
+        let resolved_half_extents = resolve_physics_half_extents(
+            physics_cfg.half_extents,
+            render_cfg.as_ref(),
+            components.terrain.as_ref(),
+        );
+        let mut physics = PhysicsComponent::new(physics_cfg.body_type, resolved_half_extents);
+        physics.restitution = physics_cfg.restitution;
+        physics.friction = physics_cfg.friction;
+        ecs.add_physics_component(entity_id, physics);
+    }
+
+    if let Some(render_cfg) = render_cfg {
+        ecs.add_render_component(
+            entity_id,
+            RenderComponent::new(render_cfg.color, render_cfg.size),
+        );
+    }
+
+    if let Some(model_cfg) = model_cfg {
+        ecs.add_model_component(entity_id, ModelComponent::new(model_cfg.asset));
+    }
+
+    if let Some(camera_cfg) = components.camera.as_ref() {
+        let mut camera = CameraComponent::new(
+            camera_cfg.yaw.unwrap_or(0.0),
+            camera_cfg.pitch.unwrap_or(0.0),
+        );
+        if let Some(speed) = camera_cfg.move_speed {
+            camera.move_speed = speed;
+        }
+        if let Some(look) = camera_cfg.look_sensitivity {
+            camera.look_sensitivity = look;
+        }
+        ecs.add_camera_component(entity_id, camera);
+    }
+
+    if let Some(input_cfg) = components.input.as_ref() {
+        let speed = input_cfg.speed.unwrap_or(0.05);
+        ecs.add_input_component(entity_id, InputComponent::new(speed));
+    }
+
+    if let Some(light_cfg) = components.light.as_ref() {
+        let component = if let Some(radius) = light_cfg.point_radius {
+            LightComponent::point(radius, light_cfg.color, light_cfg.intensity)
+        } else {
+            LightComponent::directional(light_cfg.direction, light_cfg.color, light_cfg.intensity)
+        };
+        ecs.add_light_component(entity_id, component);
+    }
+
+    if let Some(texture_cfg) = texture_cfg {
+        ecs.add_texture_component(entity_id, TextureComponent::new(texture_cfg.asset));
+    }
+
+    if let Some(script_cfg) = components.script.as_ref() {
+        ecs.add_script_component(
+            entity_id,
+            ScriptComponent::with_params(
+                script_cfg.name.clone(),
+                base_height,
+                script_cfg.params.clone(),
+            ),
+        );
+    }
+
+    entity_id
+}
+
+fn attach_entity_hierarchies(
+    scene: &SceneDefinition,
+    ecs: &mut ECS,
+    ordered_ids: &[u32],
+    name_to_entity: &HashMap<String, u32>,
+) {
+    for (index, entity) in scene.entities.iter().enumerate() {
+        let Some(parent_name) = entity.parent.as_ref() else {
+            continue;
+        };
+        let Some(&parent_id) = name_to_entity.get(parent_name) else {
+            warn!(
+                "Cannot attach '{}': parent '{}' not found",
+                entity.name, parent_name
+            );
+            continue;
+        };
+        let child_id = ordered_ids[index];
+        if child_id == parent_id {
+            warn!(
+                "Entity '{}' cannot be its own parent; skipping hierarchy attachment",
+                entity.name
+            );
+            continue;
+        }
+        let Some((parent_position, parent_orientation, _)) = ecs.find_entity_components(parent_id)
+        else {
+            warn!(
+                "Cannot attach '{}': parent entity {} missing components",
+                entity.name, parent_id
+            );
+            continue;
+        };
+        let Some((child_position, child_orientation, _)) = ecs.find_entity_components(child_id)
+        else {
+            continue;
+        };
+        let hierarchy = HierarchyComponent::from_world_transforms(
+            parent_id,
+            *parent_position,
+            *parent_orientation,
+            *child_position,
+            *child_orientation,
+        );
+        ecs.add_hierarchy_component(child_id, hierarchy);
+    }
 }
 
 fn resolve_physics_half_extents(

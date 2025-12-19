@@ -45,6 +45,7 @@ fn labyrinth_scene() -> SceneDefinition {
         background_sound: Some("assets/audio/background.wav".to_string()),
     });
     scene.add_entity(explorer_entity());
+    scene.add_entity(player_gun());
     scene.add_entity(target());
     scene.add_entity(labyrinth_floor());
     scene.add_entity(sun_light());
@@ -77,6 +78,27 @@ fn explorer_entity() -> EntityDefinition {
         }),
         ..Default::default()
     })
+}
+
+fn player_gun() -> EntityDefinition {
+    let offset_position = Position {
+        x: 0.2,
+        y: 1.4,
+        z: 5.5,
+    };
+    EntityDefinition::new("PlayerGun", offset_position)
+        .with_parent("Explorer")
+        .with_tags(["player_gun"])
+        .with_components(ComponentDefinition {
+            render: Some(RenderComponentDefinition {
+                color: [0.8, 0.8, 0.2],
+                size: 0.15,
+            }),
+            model: Some(ModelComponentDefinition {
+                asset: "assets/cube.obj".to_string(),
+            }),
+            ..Default::default()
+        })
 }
 
 fn labyrinth_floor() -> EntityDefinition {
@@ -248,7 +270,7 @@ impl ShootingSystem {
         let tags = ecs.tag_manager.tags_for_entity(entity_id);
         !tags
             .iter()
-            .any(|tag| tag == "terrain" || tag == "player" || tag == "camera")
+            .any(|tag| tag == "terrain" || tag == "player" || tag == "camera" || tag == "player_gun")
     }
 }
 

@@ -11,7 +11,8 @@ use crate::rendering::{DebugGizmo, DebugLine, Renderer};
 use crate::scene::{self, SceneLibrary, SceneLookupError};
 use crate::scripts::{ScriptCommand, ScriptRegistry};
 use crate::systems::{
-    CameraSystem, InputSystem, MovementSystem, PhysicsSystem, RenderPrepSystem, ScriptingSystem,
+    CameraSystem, HierarchySystem, InputSystem, MovementSystem, PhysicsSystem, RenderPrepSystem,
+    ScriptingSystem,
 };
 use log::{info, warn};
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
@@ -626,6 +627,7 @@ impl GameApp {
 
         self.apply_script_bindings();
         self.physics_system.rebuild_from_ecs(&mut self.ecs);
+        HierarchySystem::update(&mut self.ecs);
         for system in self.custom_systems.iter_mut() {
             system.scene_loaded(&mut self.ecs, scene_id);
         }
@@ -955,6 +957,7 @@ impl GameApp {
             ComponentKind::Terrain => self.ecs.remove_terrain_component(entity_id),
             ComponentKind::Script => self.ecs.remove_script_component(entity_id),
             ComponentKind::Physics => self.ecs.remove_physics_component(entity_id),
+            ComponentKind::Hierarchy => self.ecs.remove_hierarchy_component(entity_id),
         }
     }
 }
@@ -1098,6 +1101,7 @@ impl ApplicationHandler for GameApp {
                 self.just_pressed.clear();
                 MovementSystem::update(&mut self.ecs);
                 self.physics_system.update(&mut self.ecs);
+                HierarchySystem::update(&mut self.ecs);
                 for system in self.custom_systems.iter_mut() {
                     system.update(
                         &mut self.ecs,

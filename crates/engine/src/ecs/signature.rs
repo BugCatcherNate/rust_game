@@ -30,6 +30,7 @@ pub enum ComponentKind {
     Terrain,
     Script,
     Physics,
+    Hierarchy,
 }
 
 impl ComponentKind {
@@ -44,6 +45,7 @@ impl ComponentKind {
             ComponentKind::Terrain => 1 << 6,
             ComponentKind::Script => 1 << 7,
             ComponentKind::Physics => 1 << 8,
+            ComponentKind::Hierarchy => 1 << 9,
         }
     }
 }

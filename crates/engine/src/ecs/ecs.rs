@@ -1,7 +1,7 @@
 use crate::archetypes::{Archetype, EntityComponents};
 use crate::components::{
-    CameraComponent, InputComponent, LightComponent, ModelComponent, Name, Orientation,
-    PhysicsComponent, Position, RenderComponent, ScriptComponent, TerrainComponent,
+    CameraComponent, HierarchyComponent, InputComponent, LightComponent, ModelComponent, Name,
+    Orientation, PhysicsComponent, Position, RenderComponent, ScriptComponent, TerrainComponent,
     TextureComponent,
 };
 use crate::ecs::entity_manager::EntityManager;
@@ -221,6 +221,20 @@ impl ECS {
         );
     }
 
+    pub fn add_hierarchy_component(&mut self, id: u32, component: HierarchyComponent) {
+        let update_value = component;
+        self.add_or_replace_component(
+            id,
+            ComponentKind::Hierarchy,
+            move |bundle| bundle.hierarchy = Some(component),
+            move |archetype, index| {
+                if let Some(hierarchies) = archetype.hierarchies.as_mut() {
+                    hierarchies[index] = update_value;
+                }
+            },
+        );
+    }
+
     pub fn remove_render_component(&mut self, id: u32) {
         self.remove_component(id, ComponentKind::Render, |bundle| bundle.render = None);
     }
@@ -255,6 +269,12 @@ impl ECS {
 
     pub fn remove_physics_component(&mut self, id: u32) {
         self.remove_component(id, ComponentKind::Physics, |bundle| bundle.physics = None);
+    }
+
+    pub fn remove_hierarchy_component(&mut self, id: u32) {
+        self.remove_component(id, ComponentKind::Hierarchy, |bundle| {
+            bundle.hierarchy = None
+        });
     }
 
     pub fn input_component_mut(&mut self, id: u32) -> Option<&mut InputComponent> {
@@ -339,6 +359,28 @@ impl ECS {
         None
     }
 
+    pub fn hierarchy_component(&self, id: u32) -> Option<&HierarchyComponent> {
+        if let Some(&(archetype_index, index_within_archetype)) = self.entity_to_location.get(&id) {
+            if let Some(archetype) = self.archetypes.get(archetype_index) {
+                if let Some(hierarchies) = archetype.hierarchies.as_ref() {
+                    return hierarchies.get(index_within_archetype);
+                }
+            }
+        }
+        None
+    }
+
+    pub fn hierarchy_component_mut(&mut self, id: u32) -> Option<&mut HierarchyComponent> {
+        if let Some(&(archetype_index, index_within_archetype)) = self.entity_to_location.get(&id) {
+            if let Some(archetype) = self.archetypes.get_mut(archetype_index) {
+                if let Some(hierarchies) = archetype.hierarchies.as_mut() {
+                    return hierarchies.get_mut(index_within_archetype);
+                }
+            }
+        }
+        None
+    }
+
     pub fn find_entity_id_by_name(&self, name: &str) -> Option<u32> {
         for archetype in &self.archetypes {
             for (index, entity_name) in archetype.names.iter().enumerate() {
@@ -409,6 +451,24 @@ impl ECS {
                 id,
                 self.entity_to_location.len()
             );
+            self.detach_children_of(id);
+        }
+    }
+
+    fn detach_children_of(&mut self, parent_id: u32) {
+        let mut children = Vec::new();
+        for archetype in &self.archetypes {
+            let Some(hierarchies) = archetype.hierarchies.as_ref() else {
+                continue;
+            };
+            for (index, component) in hierarchies.iter().enumerate() {
+                if component.parent == parent_id {
+                    children.push(archetype.entity_ids[index]);
+                }
+            }
+        }
+        for child in children {
+            self.remove_hierarchy_component(child);
         }
     }
 

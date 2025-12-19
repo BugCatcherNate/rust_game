@@ -1,8 +1,9 @@
 use rust_game::components::{
-    CameraComponent, InputComponent, LightComponent, ModelComponent, Name, Orientation, Position,
-    RenderComponent, ScriptComponent, TerrainComponent,
+    CameraComponent, HierarchyComponent, InputComponent, LightComponent, ModelComponent, Name,
+    Orientation, Position, RenderComponent, ScriptComponent, TerrainComponent,
 };
 use rust_game::ecs::ECS;
+use rust_game::systems::HierarchySystem;
 
 fn add_entity(ecs: &mut ECS, position: Position, name: Name) -> u32 {
     ecs.add_entity(position, Orientation::identity(), name)
@@ -216,6 +217,89 @@ fn test_remove_render_component() {
     assert_ne!(before_index, after_index);
     assert!(ecs.archetypes[after_index].renderables.is_none());
     assert_eq!(ecs.archetypes[after_index].positions[after_slot].x, 0.0);
+}
+
+#[test]
+fn hierarchy_system_updates_child_transform() {
+    use glam::Quat;
+
+    let mut ecs = ECS::new();
+    let parent_id = add_entity(
+        &mut ecs,
+        Position {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        Name("Parent".into()),
+    );
+    let child_id = add_entity(
+        &mut ecs,
+        Position {
+            x: 1.0,
+            y: 0.0,
+            z: 0.0,
+        },
+        Name("Child".into()),
+    );
+
+    let initial_child_orientation = Orientation::from_yaw_pitch_roll(0.25, 0.1, 0.0);
+    {
+        let orientation = ecs
+            .orientation_component_mut(child_id)
+            .expect("child orientation missing");
+        *orientation = initial_child_orientation;
+    }
+
+    let (parent_position, parent_orientation, _) = ecs
+        .find_entity_components(parent_id)
+        .expect("parent missing");
+    let (child_position, child_orientation, _) =
+        ecs.find_entity_components(child_id).expect("child missing");
+
+    let hierarchy = HierarchyComponent::from_world_transforms(
+        parent_id,
+        *parent_position,
+        *parent_orientation,
+        *child_position,
+        *child_orientation,
+    );
+    ecs.add_hierarchy_component(child_id, hierarchy);
+
+    let target_parent_orientation =
+        Orientation::from_quat(Quat::from_rotation_y(std::f32::consts::FRAC_PI_2));
+    {
+        let orientation = ecs
+            .orientation_component_mut(parent_id)
+            .expect("parent orientation missing");
+        *orientation = target_parent_orientation;
+    }
+    {
+        let position = ecs
+            .position_component_mut(parent_id)
+            .expect("parent position missing");
+        position.x = 2.0;
+        position.y = 1.0;
+        position.z = -1.0;
+    }
+
+    let (updated_parent_position, updated_parent_orientation, _) = ecs
+        .find_entity_components(parent_id)
+        .expect("parent missing");
+    let (expected_position, expected_orientation) =
+        hierarchy.compose_with_parent(*updated_parent_position, *updated_parent_orientation);
+
+    HierarchySystem::update(&mut ecs);
+
+    let (child_position, child_orientation, _) =
+        ecs.find_entity_components(child_id).expect("child missing");
+
+    assert!(
+        (child_position.x - expected_position.x).abs() < 1e-5
+            && (child_position.y - expected_position.y).abs() < 1e-5
+            && (child_position.z - expected_position.z).abs() < 1e-5
+    );
+    assert_eq!(child_orientation, &expected_orientation);
 }
 
 #[test]

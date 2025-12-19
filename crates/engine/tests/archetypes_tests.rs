@@ -1,6 +1,6 @@
 use rust_game::archetypes::{Archetype, EntityComponents};
 use rust_game::components::{
-    CameraComponent, InputComponent, LightComponent, ModelComponent, Name, Position,
+    CameraComponent, InputComponent, LightComponent, ModelComponent, Name, Orientation, Position,
     RenderComponent, ScriptComponent, TerrainComponent, TextureComponent,
 };
 use rust_game::ecs::{ComponentKind, ComponentSignature};
@@ -13,7 +13,7 @@ fn signature_with(kinds: &[ComponentKind]) -> ComponentSignature {
 }
 
 fn make_bundle(id: u32, position: Position, name: Name) -> EntityComponents {
-    EntityComponents::base(id, position, name)
+    EntityComponents::base(id, position, Orientation::identity(), name)
 }
 
 #[test]
@@ -30,6 +30,7 @@ fn empty_signature_archetype_has_no_optional_columns() {
     assert!(archetype.textures.is_none());
     assert!(archetype.terrains.is_none());
     assert!(archetype.scripts.is_none());
+    assert!(archetype.hierarchies.is_none());
 }
 
 #[test]

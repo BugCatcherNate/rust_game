@@ -1,6 +1,6 @@
 use crate::components::{
-    CameraComponent, InputComponent, LightComponent, ModelComponent, Name, Orientation,
-    PhysicsComponent, Position, RenderComponent, ScriptComponent, TerrainComponent,
+    CameraComponent, HierarchyComponent, InputComponent, LightComponent, ModelComponent, Name,
+    Orientation, PhysicsComponent, Position, RenderComponent, ScriptComponent, TerrainComponent,
     TextureComponent,
 };
 use crate::ecs::{ComponentKind, ComponentSignature};
@@ -20,6 +20,7 @@ pub struct EntityComponents {
     pub terrain: Option<TerrainComponent>,
     pub script: Option<ScriptComponent>,
     pub physics: Option<PhysicsComponent>,
+    pub hierarchy: Option<HierarchyComponent>,
 }
 
 impl EntityComponents {
@@ -38,6 +39,7 @@ impl EntityComponents {
             terrain: None,
             script: None,
             physics: None,
+            hierarchy: None,
         }
     }
 }
@@ -58,6 +60,7 @@ pub struct Archetype {
     pub terrains: Option<Vec<TerrainComponent>>,
     pub scripts: Option<Vec<ScriptComponent>>,
     pub physics: Option<Vec<PhysicsComponent>>,
+    pub hierarchies: Option<Vec<HierarchyComponent>>,
 }
 
 impl Archetype {
@@ -89,6 +92,9 @@ impl Archetype {
             physics: signature
                 .contains(ComponentKind::Physics)
                 .then(|| Vec::new()),
+            hierarchies: signature
+                .contains(ComponentKind::Hierarchy)
+                .then(|| Vec::new()),
         }
     }
 
@@ -112,6 +118,7 @@ impl Archetype {
             terrain,
             script,
             physics: physics_component,
+            hierarchy,
         } = components;
 
         self.entity_ids.push(id);
@@ -163,6 +170,11 @@ impl Archetype {
         } else {
             debug_assert!(physics_component.is_none());
         }
+        if let Some(hierarchies) = self.hierarchies.as_mut() {
+            hierarchies.push(hierarchy.expect("hierarchy component missing for signature"));
+        } else {
+            debug_assert!(hierarchy.is_none());
+        }
         index
     }
 
@@ -199,6 +211,10 @@ impl Archetype {
             .physics
             .as_mut()
             .map(|column| column.swap_remove(index));
+        let hierarchy = self
+            .hierarchies
+            .as_mut()
+            .map(|column| column.swap_remove(index));
 
         let swapped_id = if index < self.entity_ids.len() {
             Some(self.entity_ids[index])
@@ -221,6 +237,7 @@ impl Archetype {
                 terrain,
                 script,
                 physics,
+                hierarchy,
             },
             swapped_id,
         )

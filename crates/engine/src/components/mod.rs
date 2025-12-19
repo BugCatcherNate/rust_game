@@ -1,4 +1,5 @@
 pub mod camera;
+pub mod hierarchy;
 pub mod input;
 pub mod light;
 pub mod model;
@@ -12,6 +13,7 @@ pub mod terrain;
 pub mod texture;
 
 pub use camera::CameraComponent;
+pub use hierarchy::HierarchyComponent;
 pub use input::InputComponent;
 pub use light::{LightComponent, LightKind};
 pub use model::ModelComponent;

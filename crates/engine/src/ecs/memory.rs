@@ -1,8 +1,8 @@
 use std::mem;
 
 use crate::components::{
-    CameraComponent, InputComponent, LightComponent, ModelComponent, Name, Orientation,
-    PhysicsComponent, Position, RenderComponent, ScriptComponent, TerrainComponent,
+    CameraComponent, HierarchyComponent, InputComponent, LightComponent, ModelComponent, Name,
+    Orientation, PhysicsComponent, Position, RenderComponent, ScriptComponent, TerrainComponent,
     TextureComponent,
 };
 
@@ -110,6 +110,15 @@ impl ECS {
                     "Physics",
                     archetype
                         .physics
+                        .as_ref()
+                        .and_then(|column| column.get(index))
+                        .is_some(),
+                    &mut components,
+                );
+                total += push_usage::<HierarchyComponent>(
+                    "Hierarchy",
+                    archetype
+                        .hierarchies
                         .as_ref()
                         .and_then(|column| column.get(index))
                         .is_some(),
