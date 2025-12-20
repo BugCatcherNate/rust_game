@@ -2,9 +2,9 @@ use std::collections::HashMap;
 use std::fmt;
 
 use crate::components::{
-    CameraComponent, HierarchyComponent, InputComponent, LightComponent, ModelComponent, Name,
-    Orientation, PhysicsBodyType, PhysicsComponent, Position, RenderComponent, ScriptComponent,
-    TerrainComponent, TextureComponent,
+    AttributesComponent, CameraComponent, HierarchyComponent, InputComponent, LightComponent,
+    ModelComponent, Name, Orientation, ParticleEmitterComponent, PhysicsBodyType, PhysicsComponent,
+    Position, RenderComponent, ScriptComponent, TerrainComponent, TextureComponent,
 };
 use crate::ecs::ECS;
 use log::warn;
@@ -147,6 +147,8 @@ pub struct ComponentDefinition {
     pub terrain: Option<TerrainComponentDefinition>,
     pub script: Option<ScriptComponentDefinition>,
     pub physics: Option<PhysicsComponentDefinition>,
+    pub attributes: Option<AttributesComponentDefinition>,
+    pub particle_emitter: Option<ParticleEmitterComponentDefinition>,
 }
 
 #[derive(Debug, Clone)]
@@ -195,6 +197,24 @@ pub struct TerrainComponentDefinition {
     pub model_asset: String,
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct AttributesComponentDefinition {
+    pub values: HashMap<String, f32>,
+}
+
+impl AttributesComponentDefinition {
+    pub fn new() -> Self {
+        Self {
+            values: HashMap::new(),
+        }
+    }
+
+    pub fn with_value(mut self, key: impl Into<String>, value: f32) -> Self {
+        self.values.insert(key.into(), value);
+        self
+    }
+}
+
 impl Default for TerrainComponentDefinition {
     fn default() -> Self {
         Self {
@@ -203,6 +223,41 @@ impl Default for TerrainComponentDefinition {
             color: default_terrain_color(),
             texture: None,
             model_asset: default_terrain_model_asset(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ParticleEmitterComponentDefinition {
+    pub rate: f32,
+    pub lifetime: f32,
+    pub speed: f32,
+    pub spread: f32,
+    pub direction: [f32; 3],
+    pub size: f32,
+    pub size_jitter: f32,
+    pub color: [f32; 3],
+    pub color_jitter: f32,
+    pub model_asset: String,
+    pub texture_asset: Option<String>,
+    pub max_particles: usize,
+}
+
+impl Default for ParticleEmitterComponentDefinition {
+    fn default() -> Self {
+        Self {
+            rate: 12.0,
+            lifetime: 1.2,
+            speed: 2.5,
+            spread: 0.6,
+            direction: [0.0, 0.0, -1.0],
+            size: 0.08,
+            size_jitter: 0.0,
+            color: [1.0, 0.6, 0.2],
+            color_jitter: 0.0,
+            model_asset: "assets/cube.obj".to_string(),
+            texture_asset: None,
+            max_particles: 128,
         }
     }
 }
@@ -428,6 +483,33 @@ fn spawn_entity_from_definition(ecs: &mut ECS, entity: &EntityDefinition) -> u32
                 script_cfg.name.clone(),
                 base_height,
                 script_cfg.params.clone(),
+            ),
+        );
+    }
+
+    if let Some(attributes_cfg) = components.attributes.as_ref() {
+        ecs.add_attributes_component(
+            entity_id,
+            AttributesComponent::from_values(attributes_cfg.values.clone()),
+        );
+    }
+
+    if let Some(emitter_cfg) = components.particle_emitter.as_ref() {
+        ecs.add_particle_emitter_component(
+            entity_id,
+            ParticleEmitterComponent::new(
+                emitter_cfg.rate,
+                emitter_cfg.lifetime,
+                emitter_cfg.speed,
+                emitter_cfg.spread,
+                emitter_cfg.direction,
+                emitter_cfg.size,
+                emitter_cfg.size_jitter,
+                emitter_cfg.color,
+                emitter_cfg.color_jitter,
+                emitter_cfg.model_asset.clone(),
+                emitter_cfg.texture_asset.clone(),
+                emitter_cfg.max_particles,
             ),
         );
     }

@@ -31,6 +31,9 @@ pub enum ComponentKind {
     Script,
     Physics,
     Hierarchy,
+    Attributes,
+    ParticleEmitter,
+    Particle,
 }
 
 impl ComponentKind {
@@ -46,6 +49,9 @@ impl ComponentKind {
             ComponentKind::Script => 1 << 7,
             ComponentKind::Physics => 1 << 8,
             ComponentKind::Hierarchy => 1 << 9,
+            ComponentKind::Attributes => 1 << 10,
+            ComponentKind::ParticleEmitter => 1 << 11,
+            ComponentKind::Particle => 1 << 12,
         }
     }
 }

@@ -11,8 +11,8 @@ use crate::rendering::{DebugGizmo, DebugLine, Renderer};
 use crate::scene::{self, SceneLibrary, SceneLookupError};
 use crate::scripts::{ScriptCommand, ScriptRegistry};
 use crate::systems::{
-    CameraSystem, HierarchySystem, InputSystem, MovementSystem, PhysicsSystem, RenderPrepSystem,
-    ScriptingSystem,
+    CameraSystem, HierarchySystem, InputSystem, MovementSystem, ParticleSystem, PhysicsSystem,
+    RenderPrepSystem, ScriptingSystem,
 };
 use log::{info, warn};
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
@@ -129,6 +129,9 @@ pub trait CustomSystem: Send {
     fn update(&mut self, ecs: &mut ECS, current_scene: &str, commands: &mut Vec<ScriptCommand>);
     fn hud_text(&mut self, _ecs: &ECS, _current_scene: &str) -> Option<String> {
         None
+    }
+    fn before_fire(&mut self, _ecs: &mut ECS) -> bool {
+        true
     }
 }
 
@@ -642,6 +645,11 @@ impl GameApp {
     }
 
     fn handle_fire(&mut self) {
+        for system in self.custom_systems.iter_mut() {
+            if !system.before_fire(&mut self.ecs) {
+                return;
+            }
+        }
         let Some((position, _, _)) = self.ecs.find_entity_components(self.camera_id) else {
             return;
         };
@@ -958,6 +966,9 @@ impl GameApp {
             ComponentKind::Script => self.ecs.remove_script_component(entity_id),
             ComponentKind::Physics => self.ecs.remove_physics_component(entity_id),
             ComponentKind::Hierarchy => self.ecs.remove_hierarchy_component(entity_id),
+            ComponentKind::Attributes => self.ecs.remove_attributes_component(entity_id),
+            ComponentKind::ParticleEmitter => self.ecs.remove_particle_emitter_component(entity_id),
+            ComponentKind::Particle => self.ecs.remove_particle_component(entity_id),
         }
     }
 }
@@ -1109,6 +1120,7 @@ impl ApplicationHandler for GameApp {
                         &mut self.custom_command_buffer,
                     );
                 }
+                ParticleSystem::update(&mut self.ecs, Some(self.camera_id));
                 self.scripting_system.update(&mut self.ecs);
                 let mut commands = self.scripting_system.take_commands();
                 commands.extend(self.custom_command_buffer.drain(..));

@@ -1,8 +1,9 @@
 use std::mem;
 
 use crate::components::{
-    CameraComponent, HierarchyComponent, InputComponent, LightComponent, ModelComponent, Name,
-    Orientation, PhysicsComponent, Position, RenderComponent, ScriptComponent, TerrainComponent,
+    AttributesComponent, CameraComponent, HierarchyComponent, InputComponent, LightComponent,
+    ModelComponent, Name, Orientation, ParticleComponent, ParticleEmitterComponent,
+    PhysicsComponent, Position, RenderComponent, ScriptComponent, TerrainComponent,
     TextureComponent,
 };
 
@@ -119,6 +120,33 @@ impl ECS {
                     "Hierarchy",
                     archetype
                         .hierarchies
+                        .as_ref()
+                        .and_then(|column| column.get(index))
+                        .is_some(),
+                    &mut components,
+                );
+                total += push_usage::<AttributesComponent>(
+                    "Attributes",
+                    archetype
+                        .attributes
+                        .as_ref()
+                        .and_then(|column| column.get(index))
+                        .is_some(),
+                    &mut components,
+                );
+                total += push_usage::<ParticleEmitterComponent>(
+                    "ParticleEmitter",
+                    archetype
+                        .particle_emitters
+                        .as_ref()
+                        .and_then(|column| column.get(index))
+                        .is_some(),
+                    &mut components,
+                );
+                total += push_usage::<ParticleComponent>(
+                    "Particle",
+                    archetype
+                        .particles
                         .as_ref()
                         .and_then(|column| column.get(index))
                         .is_some(),

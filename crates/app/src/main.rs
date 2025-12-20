@@ -1,16 +1,17 @@
 use std::sync::Arc;
 
 use glam::Quat;
-use rust_game::app::{run_game, CustomSystem, GameConfig, ShotEvent};
-use rust_game::components::{Orientation, PhysicsBodyType, Position};
+use rust_game::app::{run_game, CustomSystem, GameConfig, ShotEvent, ShotEventHit};
+use rust_game::components::{Orientation, ParticleBurstRequest, PhysicsBodyType, Position};
 use rust_game::ecs::ECS;
 use rust_game::math::normalize_vec3;
 use rust_game::modules;
 use rust_game::scene::{
-    CameraComponentDefinition, ComponentDefinition, EntityDefinition, InputComponentDefinition,
-    LightComponentDefinition, ModelComponentDefinition, PhysicsComponentDefinition,
-    RenderComponentDefinition, SceneDefinition, SceneLibrary, SceneSettings,
-    ScriptComponentDefinition, TerrainComponentDefinition,
+    AttributesComponentDefinition, CameraComponentDefinition, ComponentDefinition,
+    EntityDefinition, InputComponentDefinition, LightComponentDefinition, ModelComponentDefinition,
+    ParticleEmitterComponentDefinition, PhysicsComponentDefinition, RenderComponentDefinition,
+    SceneDefinition, SceneLibrary, SceneSettings, ScriptComponentDefinition,
+    TerrainComponentDefinition,
 };
 use rust_game::scripts::{ScriptBehavior, ScriptCommand, ScriptContext, ScriptRegistry};
 
@@ -42,11 +43,12 @@ fn labyrinth_scene() -> SceneDefinition {
         background_bottom: [0.01, 0.01, 0.03],
         fog_color: [0.04, 0.07, 0.12],
         fog_density: 0.001,
-        background_sound: Some("assets/audio/background.wav".to_string()),
+        background_sound: Some("assets/audio/forest.wav".to_string()),
     });
     scene.add_entity(explorer_entity());
     scene.add_entity(player_gun());
     scene.add_entity(target());
+    scene.add_entity(fire_emitter());
     scene.add_entity(labyrinth_floor());
     scene.add_entity(sun_light());
     scene.add_entity(tree_prop());
@@ -97,6 +99,7 @@ fn player_gun() -> EntityDefinition {
             model: Some(ModelComponentDefinition {
                 asset: "assets/cube.obj".to_string(),
             }),
+            attributes: Some(AttributesComponentDefinition::default().with_value("ammo", 12.0).with_value("damage", 2.0)),
             ..Default::default()
         })
 }
@@ -135,7 +138,7 @@ fn target() -> EntityDefinition {
         y: 3.0,
         z: 0.0,
     };
-    let mut entity = target_entity("Sun", position);
+    let mut entity = target_entity("target", position);
     entity.components.render = Some(RenderComponentDefinition {
         color: [1.0, 0.95, 0.6],
         size: 0.5,
@@ -145,7 +148,39 @@ fn target() -> EntityDefinition {
     });
     entity.components.script =
         Some(ScriptComponentDefinition::new("spinner").with_param("speed", "0.75"));
+    entity.components.attributes =
+        Some(AttributesComponentDefinition::default().with_value("health", 4.0));
+
     entity
+}
+
+fn fire_emitter() -> EntityDefinition {
+    EntityDefinition::new(
+        "Campfire",
+        Position {
+            x: 0.0,
+            y: 0.1,
+            z: 0.0,
+        },
+    )
+    .with_tags(["emitter", "fire"])
+    .with_components(ComponentDefinition {
+        particle_emitter: Some(ParticleEmitterComponentDefinition {
+            rate: 48.0,
+            lifetime: 0.45,
+            speed: 1.3,
+            spread: 0.5,
+            direction: [0.0, -1.0, 0.0],
+            size: 0.08,
+            size_jitter: 0.04,
+            color: [1.0, 0.6, 0.15],
+            color_jitter: 0.2,
+            model_asset: "assets/quad.obj".to_string(),
+            texture_asset: None,
+            max_particles: 140,
+        }),
+        ..Default::default()
+    })
 }
 fn sun_light() -> EntityDefinition {
     let position = Position {
@@ -255,6 +290,8 @@ struct ShootingSystem {
     destroyed: usize,
     last_message: Option<String>,
     message_timer: i32,
+    gun_id: Option<u32>,
+    particle_seed: u32,
 }
 
 impl ShootingSystem {
@@ -263,37 +300,119 @@ impl ShootingSystem {
             destroyed: 0,
             last_message: None,
             message_timer: 0,
+            gun_id: None,
+            particle_seed: 1,
         }
     }
 
     fn should_destroy(ecs: &ECS, entity_id: u32) -> bool {
         let tags = ecs.tag_manager.tags_for_entity(entity_id);
-        !tags
-            .iter()
-            .any(|tag| tag == "terrain" || tag == "player" || tag == "camera" || tag == "player_gun")
+        !tags.iter().any(|tag| {
+            tag == "terrain" || tag == "player" || tag == "camera" || tag == "player_gun"
+        })
+    }
+
+    fn spawn_hit_burst(&mut self, ecs: &mut ECS, hit: &ShotEventHit) {
+        const PARTICLE_COUNT: usize = 40;
+        const PARTICLE_SPEED: f32 = 1.6;
+        const PARTICLE_LIFETIME: f32 = 0.35;
+        const PARTICLE_SIZE: f32 = 0.07;
+        const PARTICLE_SIZE_JITTER: f32 = 0.02;
+        const PARTICLE_COLOR_JITTER: f32 = 0.2;
+        const PARTICLE_MODEL: &str = "assets/quad.obj";
+        const PARTICLE_COLORS: [[f32; 3]; 3] = [
+            [1.0, 0.85, 0.2],
+            [1.0, 0.55, 0.1],
+            [0.9, 0.2, 0.05],
+        ];
+
+        let color_index = (self.next_unit_random() * PARTICLE_COLORS.len() as f32) as usize;
+        let color = PARTICLE_COLORS
+            .get(color_index)
+            .copied()
+            .unwrap_or(PARTICLE_COLORS[0]);
+        let seed = self.advance_seed();
+        ecs.emit_event(ParticleBurstRequest {
+            position: hit.point,
+            direction: [-hit.normal[0], -hit.normal[1], -hit.normal[2]],
+            count: PARTICLE_COUNT,
+            speed: PARTICLE_SPEED,
+            spread: 0.8,
+            lifetime: PARTICLE_LIFETIME,
+            size: PARTICLE_SIZE,
+            size_jitter: PARTICLE_SIZE_JITTER,
+            color,
+            color_jitter: PARTICLE_COLOR_JITTER,
+            model_asset: PARTICLE_MODEL.to_string(),
+            texture_asset: Some("assets/textures/flame.png".to_string()),
+            seed,
+        });
+    }
+
+    fn advance_seed(&mut self) -> u32 {
+        self.particle_seed = self
+            .particle_seed
+            .wrapping_mul(1664525)
+            .wrapping_add(1013904223);
+        self.particle_seed
+    }
+
+    fn next_unit_random(&mut self) -> f32 {
+        let seed = self.advance_seed();
+        (seed as f32 / u32::MAX as f32).clamp(0.0, 1.0)
     }
 }
 
 impl CustomSystem for ShootingSystem {
-    fn scene_loaded(&mut self, _ecs: &mut ECS, _scene: &str) {
+    fn scene_loaded(&mut self, ecs: &mut ECS, _scene: &str) {
         self.destroyed = 0;
         self.last_message = None;
         self.message_timer = 0;
+        self.gun_id = ecs.find_entity_id_by_name("PlayerGun");
     }
 
     fn update(&mut self, ecs: &mut ECS, _scene: &str, _commands: &mut Vec<ScriptCommand>) {
         for event in ecs.drain_events::<ShotEvent>() {
             if let Some(hit) = event.hit {
-                if Self::should_destroy(ecs, hit.entity_id) {
-                    ecs.remove_entity(hit.entity_id);
-                    self.destroyed += 1;
+                self.spawn_hit_burst(ecs, &hit);
+                let mut processed = false;
+                let damage = self
+                    .gun_id
+                    .and_then(|gun_id| ecs.attributes_component(gun_id))
+                    .map(|attrs| attrs.get("damage").unwrap_or(1.0))
+                    .unwrap_or(1.0);
+                if let Some(target_attributes) = ecs.attributes_component_mut(hit.entity_id) {
+                    processed = true;
+                    let mut updated = target_attributes.get("health").unwrap_or(0.0);
+                    updated -= damage;
+                    target_attributes.set("health", updated);
                     self.last_message = Some(format!(
-                        "Destroyed {} at ({:.1}, {:.1}, {:.1})",
-                        hit.entity_id, hit.point[0], hit.point[1], hit.point[2]
+                        "Hit {}. Its health remaining is {}",
+                        hit.entity_id, updated
                     ));
-                } else {
-                    self.last_message =
-                        Some(format!("Hit {} but it cannot be destroyed", hit.entity_id));
+                    if updated <= 0.0 && Self::should_destroy(ecs, hit.entity_id) {
+                        ecs.remove_entity(hit.entity_id);
+                        self.destroyed += 1;
+                        self.last_message = Some(format!(
+                            "Destroyed {} at ({:.1}, {:.1}, {:.1})",
+                            hit.entity_id, hit.point[0], hit.point[1], hit.point[2]
+                        ));
+                        continue;
+                    }
+                }
+
+                if !processed {
+                    if Self::should_destroy(ecs, hit.entity_id) {
+                        ecs.remove_entity(hit.entity_id);
+                        self.destroyed += 1;
+                        self.last_message = Some(format!(
+                            "Destroyed {} at ({:.1}, {:.1}, {:.1})",
+                            hit.entity_id, hit.point[0], hit.point[1], hit.point[2]
+                        ));
+                    } else {
+                        self.last_message =
+                            Some(format!("Hit {} but it cannot be destroyed", hit.entity_id));
+                    }
                 }
             } else {
                 self.last_message = Some("Shot missed...".to_string());
@@ -308,13 +427,43 @@ impl CustomSystem for ShootingSystem {
         }
     }
 
-    fn hud_text(&mut self, _ecs: &ECS, _scene: &str) -> Option<String> {
-        let mut lines = vec![format!("Targets destroyed: {}", self.destroyed)];
+    fn hud_text(&mut self, ecs: &ECS, _scene: &str) -> Option<String> {
+        let mut lines = Vec::new();
+        if let Some(gun_id) = self.gun_id {
+            if let Some(attributes) = ecs.attributes_component(gun_id) {
+                let ammo = attributes.get("ammo").unwrap_or(0.0);
+                lines.push(format!("Ammo: {}", ammo.max(0.0).floor() as i32));
+            }
+        }
+        lines.push(format!("Targets destroyed: {}", self.destroyed));
         if let Some(message) = self.last_message.as_ref() {
             lines.push(message.clone());
         } else {
             lines.push("Left click to fire.".to_string());
         }
         Some(lines.join("\n"))
+    }
+
+    fn before_fire(&mut self, ecs: &mut ECS) -> bool {
+        let Some(gun_id) = self.gun_id else {
+            return true;
+        };
+        let Some(attributes) = ecs.attributes_component_mut(gun_id) else {
+            return true;
+        };
+        let ammo = attributes.get("ammo").unwrap_or(0.0);
+        if ammo <= 0.0 {
+            self.last_message = Some("Out of ammo!".to_string());
+            self.message_timer = 90;
+            return false;
+        }
+        let updated = ammo - 1.0;
+        attributes.set("ammo", updated);
+        self.last_message = Some(format!(
+            "Ammo remaining: {}",
+            updated.max(0.0).floor() as i32
+        ));
+        self.message_timer = 60;
+        true
     }
 }

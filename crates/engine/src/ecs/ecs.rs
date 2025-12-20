@@ -1,7 +1,8 @@
 use crate::archetypes::{Archetype, EntityComponents};
 use crate::components::{
-    CameraComponent, HierarchyComponent, InputComponent, LightComponent, ModelComponent, Name,
-    Orientation, PhysicsComponent, Position, RenderComponent, ScriptComponent, TerrainComponent,
+    AttributesComponent, CameraComponent, HierarchyComponent, InputComponent, LightComponent,
+    ModelComponent, Name, Orientation, ParticleComponent, ParticleEmitterComponent,
+    PhysicsComponent, Position, RenderComponent, ScriptComponent, TerrainComponent,
     TextureComponent,
 };
 use crate::ecs::entity_manager::EntityManager;
@@ -235,6 +236,48 @@ impl ECS {
         );
     }
 
+    pub fn add_attributes_component(&mut self, id: u32, component: AttributesComponent) {
+        let update_value = component.clone();
+        self.add_or_replace_component(
+            id,
+            ComponentKind::Attributes,
+            move |bundle| bundle.attributes = Some(component),
+            move |archetype, index| {
+                if let Some(attributes) = archetype.attributes.as_mut() {
+                    attributes[index] = update_value.clone();
+                }
+            },
+        );
+    }
+
+    pub fn add_particle_emitter_component(&mut self, id: u32, component: ParticleEmitterComponent) {
+        let update_value = component.clone();
+        self.add_or_replace_component(
+            id,
+            ComponentKind::ParticleEmitter,
+            move |bundle| bundle.particle_emitters = Some(component),
+            move |archetype, index| {
+                if let Some(emitters) = archetype.particle_emitters.as_mut() {
+                    emitters[index] = update_value;
+                }
+            },
+        );
+    }
+
+    pub fn add_particle_component(&mut self, id: u32, component: ParticleComponent) {
+        let update_value = component.clone();
+        self.add_or_replace_component(
+            id,
+            ComponentKind::Particle,
+            move |bundle| bundle.particles = Some(component),
+            move |archetype, index| {
+                if let Some(particles) = archetype.particles.as_mut() {
+                    particles[index] = update_value;
+                }
+            },
+        );
+    }
+
     pub fn remove_render_component(&mut self, id: u32) {
         self.remove_component(id, ComponentKind::Render, |bundle| bundle.render = None);
     }
@@ -275,6 +318,22 @@ impl ECS {
         self.remove_component(id, ComponentKind::Hierarchy, |bundle| {
             bundle.hierarchy = None
         });
+    }
+
+    pub fn remove_attributes_component(&mut self, id: u32) {
+        self.remove_component(id, ComponentKind::Attributes, |bundle| {
+            bundle.attributes = None
+        });
+    }
+
+    pub fn remove_particle_emitter_component(&mut self, id: u32) {
+        self.remove_component(id, ComponentKind::ParticleEmitter, |bundle| {
+            bundle.particle_emitters = None
+        });
+    }
+
+    pub fn remove_particle_component(&mut self, id: u32) {
+        self.remove_component(id, ComponentKind::Particle, |bundle| bundle.particles = None);
     }
 
     pub fn input_component_mut(&mut self, id: u32) -> Option<&mut InputComponent> {
@@ -342,6 +401,28 @@ impl ECS {
             if let Some(archetype) = self.archetypes.get(archetype_index) {
                 if let Some(cameras) = archetype.cameras.as_ref() {
                     return cameras.get(index_within_archetype);
+                }
+            }
+        }
+        None
+    }
+
+    pub fn attributes_component_mut(&mut self, id: u32) -> Option<&mut AttributesComponent> {
+        if let Some(&(archetype_index, index_within_archetype)) = self.entity_to_location.get(&id) {
+            if let Some(archetype) = self.archetypes.get_mut(archetype_index) {
+                if let Some(attributes) = archetype.attributes.as_mut() {
+                    return attributes.get_mut(index_within_archetype);
+                }
+            }
+        }
+        None
+    }
+
+    pub fn attributes_component(&self, id: u32) -> Option<&AttributesComponent> {
+        if let Some(&(archetype_index, index_within_archetype)) = self.entity_to_location.get(&id) {
+            if let Some(archetype) = self.archetypes.get(archetype_index) {
+                if let Some(attributes) = archetype.attributes.as_ref() {
+                    return attributes.get(index_within_archetype);
                 }
             }
         }

@@ -1,6 +1,7 @@
 use crate::components::{
-    CameraComponent, HierarchyComponent, InputComponent, LightComponent, ModelComponent, Name,
-    Orientation, PhysicsComponent, Position, RenderComponent, ScriptComponent, TerrainComponent,
+    AttributesComponent, CameraComponent, HierarchyComponent, InputComponent, LightComponent,
+    ModelComponent, Name, Orientation, ParticleComponent, ParticleEmitterComponent,
+    PhysicsComponent, Position, RenderComponent, ScriptComponent, TerrainComponent,
     TextureComponent,
 };
 use crate::ecs::{ComponentKind, ComponentSignature};
@@ -21,6 +22,9 @@ pub struct EntityComponents {
     pub script: Option<ScriptComponent>,
     pub physics: Option<PhysicsComponent>,
     pub hierarchy: Option<HierarchyComponent>,
+    pub attributes: Option<AttributesComponent>,
+    pub particle_emitters: Option<ParticleEmitterComponent>,
+    pub particles: Option<ParticleComponent>,
 }
 
 impl EntityComponents {
@@ -40,6 +44,9 @@ impl EntityComponents {
             script: None,
             physics: None,
             hierarchy: None,
+            attributes: None,
+            particle_emitters: None,
+            particles: None,
         }
     }
 }
@@ -61,6 +68,9 @@ pub struct Archetype {
     pub scripts: Option<Vec<ScriptComponent>>,
     pub physics: Option<Vec<PhysicsComponent>>,
     pub hierarchies: Option<Vec<HierarchyComponent>>,
+    pub attributes: Option<Vec<AttributesComponent>>,
+    pub particle_emitters: Option<Vec<ParticleEmitterComponent>>,
+    pub particles: Option<Vec<ParticleComponent>>,
 }
 
 impl Archetype {
@@ -95,6 +105,15 @@ impl Archetype {
             hierarchies: signature
                 .contains(ComponentKind::Hierarchy)
                 .then(|| Vec::new()),
+            attributes: signature
+                .contains(ComponentKind::Attributes)
+                .then(|| Vec::new()),
+            particle_emitters: signature
+                .contains(ComponentKind::ParticleEmitter)
+                .then(|| Vec::new()),
+            particles: signature
+                .contains(ComponentKind::Particle)
+                .then(|| Vec::new()),
         }
     }
 
@@ -119,6 +138,9 @@ impl Archetype {
             script,
             physics: physics_component,
             hierarchy,
+            attributes,
+            particle_emitters,
+            particles: particle,
         } = components;
 
         self.entity_ids.push(id);
@@ -175,6 +197,21 @@ impl Archetype {
         } else {
             debug_assert!(hierarchy.is_none());
         }
+        if let Some(attributes_list) = self.attributes.as_mut() {
+            attributes_list.push(attributes.expect("attributes component missing for signature"));
+        } else {
+            debug_assert!(attributes.is_none());
+        }
+        if let Some(emitters) = self.particle_emitters.as_mut() {
+            emitters.push(particle_emitters.expect("particle emitter missing for signature"));
+        } else {
+            debug_assert!(particle_emitters.is_none());
+        }
+        if let Some(particles) = self.particles.as_mut() {
+            particles.push(particle.expect("particle component missing for signature"));
+        } else {
+            debug_assert!(particle.is_none());
+        }
         index
     }
 
@@ -215,6 +252,18 @@ impl Archetype {
             .hierarchies
             .as_mut()
             .map(|column| column.swap_remove(index));
+        let attributes = self
+            .attributes
+            .as_mut()
+            .map(|column| column.swap_remove(index));
+        let particle_emitters = self
+            .particle_emitters
+            .as_mut()
+            .map(|column| column.swap_remove(index));
+        let particle = self
+            .particles
+            .as_mut()
+            .map(|column| column.swap_remove(index));
 
         let swapped_id = if index < self.entity_ids.len() {
             Some(self.entity_ids[index])
@@ -238,6 +287,9 @@ impl Archetype {
                 script,
                 physics,
                 hierarchy,
+                attributes,
+                particle_emitters,
+                particles: particle,
             },
             swapped_id,
         )

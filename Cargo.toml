@@ -16,5 +16,5 @@ bytemuck = { version = "1.14", features = ["derive"] }
 glam = "0.25"
 tobj = "4.0"
 image = { version = "0.24", default-features = false, features = ["png", "jpeg"] }
-rodio = { version = "0.17", default-features = false, features = ["vorbis"] }
+rodio = { version = "0.17", default-features = false, features = ["vorbis", "wav"] }
 rapier3d = "0.23"

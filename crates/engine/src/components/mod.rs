@@ -1,3 +1,4 @@
+pub mod attributes;
 pub mod camera;
 pub mod hierarchy;
 pub mod input;
@@ -5,6 +6,7 @@ pub mod light;
 pub mod model;
 pub mod name;
 pub mod orientation;
+pub mod particle;
 pub mod physics;
 pub mod position;
 pub mod render;
@@ -12,6 +14,7 @@ pub mod script;
 pub mod terrain;
 pub mod texture;
 
+pub use attributes::AttributesComponent;
 pub use camera::CameraComponent;
 pub use hierarchy::HierarchyComponent;
 pub use input::InputComponent;
@@ -19,6 +22,7 @@ pub use light::{LightComponent, LightKind};
 pub use model::ModelComponent;
 pub use name::Name;
 pub use orientation::Orientation;
+pub use particle::{ParticleBurstRequest, ParticleComponent, ParticleEmitterComponent};
 pub use physics::{PhysicsBodyType, PhysicsComponent};
 pub use position::Position;
 pub use render::RenderComponent;
