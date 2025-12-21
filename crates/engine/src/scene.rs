@@ -1,5 +1,8 @@
 use std::collections::HashMap;
 use std::fmt;
+use std::fs::File;
+use std::io::BufReader;
+use std::path::Path;
 
 use crate::components::{
     AttributesComponent, CameraComponent, HierarchyComponent, InputComponent, LightComponent,
@@ -8,6 +11,7 @@ use crate::components::{
 };
 use crate::ecs::ECS;
 use log::warn;
+use serde::Deserialize;
 
 #[derive(Debug, Clone)]
 pub struct SceneDefinition {
@@ -72,6 +76,34 @@ impl SceneLibrary {
     pub fn contains(&self, id: &str) -> bool {
         self.scenes.contains_key(id)
     }
+}
+
+#[derive(Debug)]
+pub enum SceneLoadError {
+    Io(std::io::Error),
+    Parse(serde_yaml::Error),
+    InvalidBodyType { value: String },
+}
+
+impl fmt::Display for SceneLoadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            SceneLoadError::Io(err) => write!(f, "Failed to read scene file: {}", err),
+            SceneLoadError::Parse(err) => write!(f, "Failed to parse scene file: {}", err),
+            SceneLoadError::InvalidBodyType { value } => {
+                write!(f, "Unknown physics body type '{}'", value)
+            }
+        }
+    }
+}
+
+impl std::error::Error for SceneLoadError {}
+
+pub fn load_scene_from_yaml(path: impl AsRef<Path>) -> Result<SceneDefinition, SceneLoadError> {
+    let file = File::open(path.as_ref()).map_err(SceneLoadError::Io)?;
+    let reader = BufReader::new(file);
+    let scene_file: SceneFile = serde_yaml::from_reader(reader).map_err(SceneLoadError::Parse)?;
+    scene_file.into_scene_definition()
 }
 
 #[derive(Debug)]
@@ -356,6 +388,305 @@ fn default_fog_density() -> f32 {
 
 fn default_physics_half_extents() -> [f32; 3] {
     [0.5, 0.5, 0.5]
+}
+
+#[derive(Debug, Deserialize)]
+struct SceneFile {
+    #[serde(default)]
+    environment: Option<SceneSettingsConfig>,
+    #[serde(default)]
+    entities: Vec<EntityConfig>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct SceneSettingsConfig {
+    background_top: Option<[f32; 3]>,
+    background_bottom: Option<[f32; 3]>,
+    fog_color: Option<[f32; 3]>,
+    fog_density: Option<f32>,
+    background_sound: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct EntityConfig {
+    name: String,
+    position: PositionConfig,
+    #[serde(default)]
+    orientation: Option<OrientationConfig>,
+    #[serde(default)]
+    parent: Option<String>,
+    #[serde(default)]
+    tags: Vec<String>,
+    #[serde(default)]
+    components: ComponentsConfig,
+}
+
+#[derive(Debug, Deserialize)]
+struct PositionConfig {
+    x: f32,
+    y: f32,
+    z: f32,
+}
+
+#[derive(Debug, Deserialize)]
+struct OrientationConfig {
+    yaw: f32,
+    pitch: f32,
+    roll: f32,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct ComponentsConfig {
+    render: Option<RenderConfig>,
+    model: Option<ModelConfig>,
+    camera: Option<CameraConfig>,
+    input: Option<InputConfig>,
+    light: Option<LightConfig>,
+    texture: Option<TextureConfig>,
+    terrain: Option<TerrainConfig>,
+    script: Option<ScriptConfig>,
+    physics: Option<PhysicsConfig>,
+    attributes: Option<AttributesConfig>,
+    particle_emitter: Option<ParticleEmitterConfig>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RenderConfig {
+    color: [f32; 3],
+    size: f32,
+}
+
+#[derive(Debug, Deserialize)]
+struct ModelConfig {
+    asset: String,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct CameraConfig {
+    yaw: Option<f32>,
+    pitch: Option<f32>,
+    move_speed: Option<f32>,
+    look_sensitivity: Option<f32>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct InputConfig {
+    speed: Option<f32>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LightConfig {
+    direction: [f32; 3],
+    color: [f32; 3],
+    intensity: f32,
+    point_radius: Option<f32>,
+}
+
+#[derive(Debug, Deserialize)]
+struct TextureConfig {
+    asset: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct TerrainConfig {
+    size: f32,
+    height: f32,
+    color: [f32; 3],
+    texture: Option<String>,
+    model_asset: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ScriptConfig {
+    name: String,
+    #[serde(default)]
+    params: HashMap<String, String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct PhysicsConfig {
+    body_type: Option<String>,
+    half_extents: Option<[f32; 3]>,
+    restitution: Option<f32>,
+    friction: Option<f32>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct AttributesConfig {
+    #[serde(default)]
+    values: HashMap<String, f32>,
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct ParticleEmitterConfig {
+    rate: Option<f32>,
+    lifetime: Option<f32>,
+    speed: Option<f32>,
+    spread: Option<f32>,
+    direction: Option<[f32; 3]>,
+    size: Option<f32>,
+    size_jitter: Option<f32>,
+    color: Option<[f32; 3]>,
+    color_jitter: Option<f32>,
+    model_asset: Option<String>,
+    texture_asset: Option<String>,
+    max_particles: Option<usize>,
+}
+
+impl SceneFile {
+    fn into_scene_definition(self) -> Result<SceneDefinition, SceneLoadError> {
+        let mut settings = SceneSettings::default();
+        if let Some(environment) = self.environment {
+            if let Some(top) = environment.background_top {
+                settings.background_top = top;
+            }
+            if let Some(bottom) = environment.background_bottom {
+                settings.background_bottom = bottom;
+            }
+            if let Some(color) = environment.fog_color {
+                settings.fog_color = color;
+            }
+            if let Some(density) = environment.fog_density {
+                settings.fog_density = density;
+            }
+            if let Some(sound) = environment.background_sound {
+                settings.background_sound = Some(sound);
+            }
+        }
+
+        let mut scene = SceneDefinition::new(settings);
+        for entity in self.entities {
+            scene.add_entity(entity.into_definition()?);
+        }
+        Ok(scene)
+    }
+}
+
+impl EntityConfig {
+    fn into_definition(self) -> Result<EntityDefinition, SceneLoadError> {
+        let position = Position {
+            x: self.position.x,
+            y: self.position.y,
+            z: self.position.z,
+        };
+        let mut definition = EntityDefinition::new(self.name, position);
+        if let Some(orientation) = self.orientation {
+            definition = definition.with_orientation(Orientation::from_yaw_pitch_roll(
+                orientation.yaw,
+                orientation.pitch,
+                orientation.roll,
+            ));
+        }
+        if let Some(parent) = self.parent {
+            definition = definition.with_parent(parent);
+        }
+        if !self.tags.is_empty() {
+            definition = definition.with_tags(self.tags);
+        }
+        let components = self.components.into_definition()?;
+        definition = definition.with_components(components);
+        Ok(definition)
+    }
+}
+
+impl ComponentsConfig {
+    fn into_definition(self) -> Result<ComponentDefinition, SceneLoadError> {
+        Ok(ComponentDefinition {
+            render: self.render.map(|cfg| RenderComponentDefinition {
+                color: cfg.color,
+                size: cfg.size,
+            }),
+            model: self
+                .model
+                .map(|cfg| ModelComponentDefinition { asset: cfg.asset }),
+            camera: self.camera.map(|cfg| CameraComponentDefinition {
+                yaw: cfg.yaw,
+                pitch: cfg.pitch,
+                move_speed: cfg.move_speed,
+                look_sensitivity: cfg.look_sensitivity,
+            }),
+            input: self
+                .input
+                .map(|cfg| InputComponentDefinition { speed: cfg.speed }),
+            light: self.light.map(|cfg| LightComponentDefinition {
+                direction: cfg.direction,
+                color: cfg.color,
+                intensity: cfg.intensity,
+                point_radius: cfg.point_radius,
+            }),
+            texture: self
+                .texture
+                .map(|cfg| TextureComponentDefinition { asset: cfg.asset }),
+            terrain: self.terrain.map(|cfg| TerrainComponentDefinition {
+                size: cfg.size,
+                height: cfg.height,
+                color: cfg.color,
+                texture: cfg.texture,
+                model_asset: cfg
+                    .model_asset
+                    .unwrap_or_else(default_terrain_model_asset),
+            }),
+            script: self.script.map(|cfg| ScriptComponentDefinition {
+                name: cfg.name,
+                params: cfg.params,
+            }),
+            physics: match self.physics {
+                Some(cfg) => Some(cfg.into_definition()?),
+                None => None,
+            },
+            attributes: self.attributes.map(|cfg| AttributesComponentDefinition {
+                values: cfg.values,
+            }),
+            particle_emitter: self.particle_emitter.map(|cfg| {
+                let defaults = ParticleEmitterComponentDefinition::default();
+                ParticleEmitterComponentDefinition {
+                    rate: cfg.rate.unwrap_or(defaults.rate),
+                    lifetime: cfg.lifetime.unwrap_or(defaults.lifetime),
+                    speed: cfg.speed.unwrap_or(defaults.speed),
+                    spread: cfg.spread.unwrap_or(defaults.spread),
+                    direction: cfg.direction.unwrap_or(defaults.direction),
+                    size: cfg.size.unwrap_or(defaults.size),
+                    size_jitter: cfg.size_jitter.unwrap_or(defaults.size_jitter),
+                    color: cfg.color.unwrap_or(defaults.color),
+                    color_jitter: cfg.color_jitter.unwrap_or(defaults.color_jitter),
+                    model_asset: cfg
+                        .model_asset
+                        .unwrap_or_else(|| defaults.model_asset.clone()),
+                    texture_asset: cfg.texture_asset.or_else(|| defaults.texture_asset.clone()),
+                    max_particles: cfg.max_particles.unwrap_or(defaults.max_particles),
+                }
+            }),
+        })
+    }
+}
+
+impl PhysicsConfig {
+    fn into_definition(self) -> Result<PhysicsComponentDefinition, SceneLoadError> {
+        let mut definition = PhysicsComponentDefinition::default();
+        if let Some(body_type) = self.body_type {
+            definition.body_type = parse_body_type(&body_type)
+                .ok_or(SceneLoadError::InvalidBodyType { value: body_type })?;
+        }
+        if let Some(half_extents) = self.half_extents {
+            definition.half_extents = Some(half_extents);
+        }
+        if let Some(restitution) = self.restitution {
+            definition.restitution = restitution;
+        }
+        if let Some(friction) = self.friction {
+            definition.friction = friction;
+        }
+        Ok(definition)
+    }
+}
+
+fn parse_body_type(value: &str) -> Option<PhysicsBodyType> {
+    match value.to_ascii_lowercase().as_str() {
+        "dynamic" => Some(PhysicsBodyType::Dynamic),
+        "static" => Some(PhysicsBodyType::Static),
+        "kinematic" => Some(PhysicsBodyType::Kinematic),
+        _ => None,
+    }
 }
 
 pub fn apply_scene_definition(scene: &SceneDefinition, ecs: &mut ECS) -> SceneSettings {

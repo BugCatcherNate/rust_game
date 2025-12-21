@@ -14,3 +14,5 @@ tobj = { workspace = true }
 image = { workspace = true }
 rodio = { workspace = true }
 rapier3d = { workspace = true }
+serde = { workspace = true }
+serde_yaml = { workspace = true }

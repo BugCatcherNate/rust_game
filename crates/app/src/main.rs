@@ -1,17 +1,13 @@
 use std::sync::Arc;
 
 use glam::Quat;
-use rust_game::app::{run_game, CustomSystem, GameConfig, ShotEvent, ShotEventHit};
-use rust_game::components::{Orientation, ParticleBurstRequest, PhysicsBodyType, Position};
+use rust_game::app::{run_game, CustomSystem, GameConfig, ScriptBinding, ShotEvent, ShotEventHit};
+use rust_game::components::{Orientation, ParticleBurstRequest, Position};
 use rust_game::ecs::ECS;
-use rust_game::math::normalize_vec3;
 use rust_game::modules;
 use rust_game::scene::{
-    AttributesComponentDefinition, CameraComponentDefinition, ComponentDefinition,
-    EntityDefinition, InputComponentDefinition, LightComponentDefinition, ModelComponentDefinition,
-    ParticleEmitterComponentDefinition, PhysicsComponentDefinition, RenderComponentDefinition,
-    SceneDefinition, SceneLibrary, SceneSettings, ScriptComponentDefinition,
-    TerrainComponentDefinition,
+    load_scene_from_yaml, ComponentDefinition, EntityDefinition, PhysicsComponentDefinition,
+    RenderComponentDefinition, SceneDefinition, SceneLibrary,
 };
 use rust_game::scripts::{ScriptBehavior, ScriptCommand, ScriptContext, ScriptRegistry};
 
@@ -27,221 +23,90 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
     modules::core::initialize();
 
-    let scenes = SceneLibrary::new().with_scene(LABYRINTH_SCENE_ID, labyrinth_scene());
+    let mut scene = load_scene_from_yaml("assets/labyrinth_scene.yml")?;
+    spawn_random_trees(&mut scene);
+    let scenes = SceneLibrary::new().with_scene(LABYRINTH_SCENE_ID, scene);
     let script_registry = build_script_registry();
 
     let config = GameConfig::new(LABYRINTH_SCENE_ID, scenes, script_registry)
         .with_window_title("My Rust Game")
+        .with_script_binding(
+            ScriptBinding::new("target", "spinner").with_param("speed", "0.75"),
+        )
         .with_custom_system(ShootingSystem::new());
 
     run_game(config)
 }
 
-fn labyrinth_scene() -> SceneDefinition {
-    let mut scene = SceneDefinition::new(SceneSettings {
-        background_top: [0.08, 0.11, 0.19],
-        background_bottom: [0.01, 0.01, 0.03],
-        fog_color: [0.04, 0.07, 0.12],
-        fog_density: 0.001,
-        background_sound: Some("assets/audio/forest.wav".to_string()),
-    });
-    scene.add_entity(explorer_entity());
-    scene.add_entity(player_gun());
-    scene.add_entity(target());
-    scene.add_entity(fire_emitter());
-    scene.add_entity(labyrinth_floor());
-    scene.add_entity(sun_light());
-    scene.add_entity(tree_prop());
-    scene
-}
-
-fn explorer_entity() -> EntityDefinition {
-    EntityDefinition::new(
-        "Explorer",
-        Position {
-            x: 0.0,
-            y: 1.6,
-            z: 6.0,
-        },
-    )
-    .with_tags(["player", "camera"])
-    .with_components(ComponentDefinition {
-        camera: Some(CameraComponentDefinition {
-            yaw: Some(0.0),
-            pitch: Some(0.0),
-            move_speed: Some(0.05),
-            look_sensitivity: Some(0.0025),
-        }),
-        input: Some(InputComponentDefinition { speed: Some(0.05) }),
-        physics: Some(PhysicsComponentDefinition {
-            body_type: PhysicsBodyType::Dynamic,
-            half_extents: Some([0.3, 0.9, 0.3]),
-            ..Default::default()
-        }),
-        ..Default::default()
-    })
-}
-
-fn player_gun() -> EntityDefinition {
-    let offset_position = Position {
-        x: 0.2,
-        y: 1.4,
-        z: 5.5,
-    };
-    EntityDefinition::new("PlayerGun", offset_position)
-        .with_parent("Explorer")
-        .with_tags(["player_gun"])
+fn spawn_random_trees(scene: &mut SceneDefinition) {
+    let terrain_size = find_terrain_size(scene).unwrap_or(22.0);
+    let half = terrain_size * 0.5;
+    let mut rng = LcgRng::new(42);
+    for index in 0..50 {
+        let x = rng.next_range(-half, half);
+        let z = rng.next_range(-half, half);
+        let yaw = rng.next_range(0.0, std::f32::consts::TAU);
+        let name = format!("Tree_{:02}", index + 1);
+        let tree = EntityDefinition::new(
+            name,
+            Position {
+                x,
+                y: 0.0,
+                z,
+            },
+        )
+        .with_tags(["tree"])
+        .with_orientation(Orientation::from_yaw_pitch_roll(yaw, 0.0, 0.0))
         .with_components(ComponentDefinition {
             render: Some(RenderComponentDefinition {
-                color: [0.8, 0.8, 0.2],
-                size: 0.15,
+                color: [0.3, 0.6, 0.2],
+                size: 1.0,
             }),
-            model: Some(ModelComponentDefinition {
-                asset: "assets/cube.obj".to_string(),
+            model: Some(rust_game::scene::ModelComponentDefinition {
+                asset: "assets/tree.obj".to_string(),
             }),
-            attributes: Some(AttributesComponentDefinition::default().with_value("ammo", 12.0).with_value("damage", 2.0)),
-            ..Default::default()
-        })
-}
-
-fn labyrinth_floor() -> EntityDefinition {
-    let mut terrain = TerrainComponentDefinition::default();
-    terrain.size = 22.0;
-    terrain.height = 0.3;
-    terrain.color = [0.4, 0.4, 0.4];
-    terrain.texture = None;
-    let terrain_size = terrain.size;
-    let terrain_height = terrain.height;
-    EntityDefinition::new(
-        "LabyrinthFloor",
-        Position {
-            x: 0.0,
-            y: -0.15,
-            z: 0.0,
-        },
-    )
-    .with_tags(["terrain"])
-    .with_components(ComponentDefinition {
-        terrain: Some(terrain),
-        physics: Some(PhysicsComponentDefinition {
-            body_type: PhysicsBodyType::Static,
-            half_extents: Some([terrain_size * 0.5, terrain_height * 0.5, terrain_size * 0.5]),
-            ..Default::default()
-        }),
-        ..Default::default()
-    })
-}
-
-fn target() -> EntityDefinition {
-    let position = Position {
-        x: 0.0,
-        y: 3.0,
-        z: 0.0,
-    };
-    let mut entity = target_entity("target", position);
-    entity.components.render = Some(RenderComponentDefinition {
-        color: [1.0, 0.95, 0.6],
-        size: 0.5,
-    });
-    entity.components.model = Some(ModelComponentDefinition {
-        asset: "assets/cube.obj".to_string(),
-    });
-    entity.components.script =
-        Some(ScriptComponentDefinition::new("spinner").with_param("speed", "0.75"));
-    entity.components.attributes =
-        Some(AttributesComponentDefinition::default().with_value("health", 4.0));
-
-    entity
-}
-
-fn fire_emitter() -> EntityDefinition {
-    EntityDefinition::new(
-        "Campfire",
-        Position {
-            x: 0.0,
-            y: 0.1,
-            z: 0.0,
-        },
-    )
-    .with_tags(["emitter", "fire"])
-    .with_components(ComponentDefinition {
-        particle_emitter: Some(ParticleEmitterComponentDefinition {
-            rate: 48.0,
-            lifetime: 0.45,
-            speed: 1.3,
-            spread: 0.5,
-            direction: [0.0, -1.0, 0.0],
-            size: 0.08,
-            size_jitter: 0.04,
-            color: [1.0, 0.6, 0.15],
-            color_jitter: 0.2,
-            model_asset: "assets/quad.obj".to_string(),
-            texture_asset: None,
-            max_particles: 140,
-        }),
-        ..Default::default()
-    })
-}
-fn sun_light() -> EntityDefinition {
-    let position = Position {
-        x: 0.0,
-        y: 30.0,
-        z: 0.0,
-    };
-    let direction = normalize_vec3([0.0, -1.0, 0.0]);
-    let mut entity = directional_light("Sun", position, direction, [1.0, 0.95, 0.85], 1.0);
-    entity.components.render = Some(RenderComponentDefinition {
-        color: [1.0, 0.95, 0.6],
-        size: 0.5,
-    });
-    entity.components.model = Some(ModelComponentDefinition {
-        asset: "assets/cube.obj".to_string(),
-    });
-    entity
-}
-
-fn tree_prop() -> EntityDefinition {
-    EntityDefinition::new(
-        "Tree",
-        Position {
-            x: 4.0,
-            y: 0.0,
-            z: -3.0,
-        },
-    )
-    .with_tags(["prop"])
-    .with_orientation(Orientation::from_yaw_pitch_roll(
-        std::f32::consts::FRAC_PI_4,
-        0.0,
-        0.0,
-    ))
-    .with_components(ComponentDefinition {
-        render: Some(RenderComponentDefinition {
-            color: [0.3, 0.6, 0.2],
-            size: 1.0,
-        }),
-        model: Some(ModelComponentDefinition {
-            asset: "assets/tree.obj".to_string(),
-        }),
-        physics: Some(PhysicsComponentDefinition {
-            body_type: PhysicsBodyType::Static,
-            half_extents: Some([0.8, 2.0, 0.8]),
-            ..Default::default()
-        }),
-        ..Default::default()
-    })
-}
-fn target_entity(name: &str, position: Position) -> EntityDefinition {
-    EntityDefinition::new(name, position)
-        .with_tags(["target"])
-        .with_components(ComponentDefinition {
             physics: Some(PhysicsComponentDefinition {
-                body_type: PhysicsBodyType::Static,
-                half_extents: Some([0.4, 0.4, 0.4]),
+                body_type: rust_game::components::PhysicsBodyType::Static,
+                half_extents: Some([0.1, 2.0, 0.1]),
                 ..Default::default()
             }),
             ..Default::default()
-        })
+        });
+        scene.add_entity(tree);
+    }
+}
+
+fn find_terrain_size(scene: &SceneDefinition) -> Option<f32> {
+    scene
+        .entities
+        .iter()
+        .find_map(|entity| entity.components.terrain.as_ref().map(|terrain| terrain.size))
+}
+
+struct LcgRng {
+    state: u32,
+}
+
+impl LcgRng {
+    const A: u32 = 1664525;
+    const C: u32 = 1013904223;
+
+    fn new(seed: u32) -> Self {
+        Self { state: seed }
+    }
+
+    fn next_u32(&mut self) -> u32 {
+        self.state = self.state.wrapping_mul(Self::A).wrapping_add(Self::C);
+        self.state
+    }
+
+    fn next_f32(&mut self) -> f32 {
+        self.next_u32() as f32 / u32::MAX as f32
+    }
+
+    fn next_range(&mut self, min: f32, max: f32) -> f32 {
+        min + (max - min) * self.next_f32()
+    }
 }
 
 #[derive(Default)]
@@ -266,26 +131,6 @@ impl ScriptBehavior for SpinnerScript {
     }
 }
 
-fn directional_light(
-    name: &str,
-    position: Position,
-    direction: [f32; 3],
-    color: [f32; 3],
-    intensity: f32,
-) -> EntityDefinition {
-    EntityDefinition::new(name, position)
-        .with_tags(["light"])
-        .with_components(ComponentDefinition {
-            light: Some(LightComponentDefinition {
-                direction,
-                color,
-                intensity,
-                point_radius: None,
-            }),
-            ..Default::default()
-        })
-}
-
 struct ShootingSystem {
     destroyed: usize,
     last_message: Option<String>,
@@ -308,7 +153,7 @@ impl ShootingSystem {
     fn should_destroy(ecs: &ECS, entity_id: u32) -> bool {
         let tags = ecs.tag_manager.tags_for_entity(entity_id);
         !tags.iter().any(|tag| {
-            tag == "terrain" || tag == "player" || tag == "camera" || tag == "player_gun"
+            tag == "terrain" || tag == "player" || tag == "camera" || tag == "player_gun" || tag == "tree"
         })
     }
 

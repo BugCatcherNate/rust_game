@@ -4,7 +4,7 @@ use std::io::BufReader;
 use std::sync::Arc;
 
 use crate::components::{
-    CameraComponent, PhysicsBodyType, PhysicsComponent, Position, ScriptComponent,
+    CameraComponent, Name, Orientation, PhysicsBodyType, Position, ScriptComponent,
 };
 use crate::ecs::{ComponentKind, ECS};
 use crate::rendering::{DebugGizmo, DebugLine, Renderer};
@@ -193,8 +193,9 @@ struct GameApp {
     console_input: String,
     console_history: VecDeque<String>,
     creative_mode: bool,
-    saved_player_physics: Option<PhysicsComponent>,
-    saved_camera_physics: Option<PhysicsComponent>,
+    creative_camera_id: Option<u32>,
+    saved_camera_id: Option<u32>,
+    selected_entity_id: Option<u32>,
 }
 
 impl GameApp {
@@ -239,8 +240,9 @@ impl GameApp {
             console_input: String::new(),
             console_history: VecDeque::new(),
             creative_mode: false,
-            saved_player_physics: None,
-            saved_camera_physics: None,
+            creative_camera_id: None,
+            saved_camera_id: None,
+            selected_entity_id: None,
         };
         app.reload_scene(&initial_scene)
             .unwrap_or_else(|err| panic!("Failed to load scene '{}': {}", initial_scene, err));
@@ -380,6 +382,9 @@ impl GameApp {
     }
 
     fn toggle_creative_mode(&mut self) {
+        if self.console_open {
+            self.hide_console();
+        }
         if self.creative_mode {
             self.disable_creative_mode();
         } else {
@@ -391,19 +396,32 @@ impl GameApp {
         if self.creative_mode {
             return;
         }
-        self.saved_player_physics = self.ecs.physics_component(self.player_id).cloned();
-        if self.saved_player_physics.is_some() {
-            self.ecs.remove_physics_component(self.player_id);
+        self.stop_background_audio();
+        let (position, orientation) = self
+            .ecs
+            .find_entity_components(self.camera_id)
+            .map(|(position, orientation, _)| (*position, *orientation))
+            .unwrap_or((Position::zero(), Orientation::identity()));
+        let camera = self
+            .ecs
+            .camera_component(self.camera_id)
+            .cloned()
+            .unwrap_or_else(|| CameraComponent::new(0.0, 0.0));
+
+        let creative_id =
+            self.ecs
+                .add_entity(position, orientation, Name("CreativeExplorer".to_string()));
+        self.ecs.add_camera_component(creative_id, camera);
+
+        if let Some(input) = self.ecs.input_component_mut(self.player_id) {
+            input.set_direction([0.0, 0.0, 0.0]);
+            input.jump_requested = false;
         }
-        if self.camera_id != self.player_id {
-            self.saved_camera_physics = self.ecs.physics_component(self.camera_id).cloned();
-            if self.saved_camera_physics.is_some() {
-                self.ecs.remove_physics_component(self.camera_id);
-            }
-        } else {
-            self.saved_camera_physics = None;
-        }
-        self.physics_system.rebuild_from_ecs(&mut self.ecs);
+
+        self.saved_camera_id = Some(self.camera_id);
+        self.creative_camera_id = Some(creative_id);
+        self.camera_id = creative_id;
+        self.selected_entity_id = None;
         self.creative_mode = true;
         self.push_console_history("Creative mode enabled".to_string());
     }
@@ -412,18 +430,15 @@ impl GameApp {
         if !self.creative_mode {
             return;
         }
-        if let Some(component) = self.saved_player_physics.take() {
-            self.ecs.add_physics_component(self.player_id, component);
+        if let Some(creative_id) = self.creative_camera_id.take() {
+            self.ecs.remove_entity(creative_id);
         }
-        if let Some(component) = self.saved_camera_physics.take() {
-            if self.camera_id != self.player_id {
-                self.ecs.add_physics_component(self.camera_id, component);
-            } else {
-                self.ecs.add_physics_component(self.player_id, component);
-            }
+        if let Some(saved_id) = self.saved_camera_id.take() {
+            self.camera_id = saved_id;
         }
-        self.physics_system.rebuild_from_ecs(&mut self.ecs);
+        self.selected_entity_id = None;
         self.creative_mode = false;
+        self.start_background_audio();
         self.push_console_history("Creative mode disabled".to_string());
     }
 
@@ -446,6 +461,9 @@ impl GameApp {
     }
 
     fn start_background_audio(&mut self) {
+        if self.creative_mode {
+            return;
+        }
         if self.audio_sink.is_some() {
             return;
         }
@@ -619,8 +637,9 @@ impl GameApp {
         self.printed_state = false;
         self.pending_mouse_delta = (0.0, 0.0);
         self.creative_mode = false;
-        self.saved_player_physics = None;
-        self.saved_camera_physics = None;
+        self.creative_camera_id = None;
+        self.saved_camera_id = None;
+        self.selected_entity_id = None;
 
         self.scripting_system.reset();
 
@@ -709,6 +728,53 @@ impl GameApp {
         });
     }
 
+    fn handle_selection(&mut self) {
+        let Some((position, _, _)) = self.ecs.find_entity_components(self.camera_id) else {
+            return;
+        };
+        let Some(camera) = self.ecs.camera_component(self.camera_id) else {
+            return;
+        };
+        let origin = position.as_array();
+        let direction = Self::camera_forward(camera);
+        let mut ray_origin = origin;
+        for i in 0..3 {
+            ray_origin[i] += direction[i] * 2.0;
+        }
+        let max_distance = 100.0;
+        let mut line_end = [
+            origin[0] + direction[0] * max_distance,
+            origin[1] + direction[1] * max_distance,
+            origin[2] + direction[2] * max_distance,
+        ];
+        let mut line_color = [0.2, 0.8, 1.0];
+        if let Some(hit) = self
+            .physics_system
+            .cast_ray(ray_origin, direction, max_distance)
+        {
+            line_end = hit.point;
+            line_color = [0.2, 1.0, 0.6];
+            self.selected_entity_id = Some(hit.entity_id);
+            if let Some((_, _, name)) = self.ecs.find_entity_components(hit.entity_id) {
+                self.push_console_history(format!("Selected '{}' (id {})", name.0, hit.entity_id));
+            } else {
+                self.push_console_history(format!("Selected entity {}", hit.entity_id));
+            }
+            self.debug_gizmos.push(DebugGizmo::Label {
+                position: hit.point,
+                text: format!("Selected {}", hit.entity_id),
+            });
+        } else {
+            self.selected_entity_id = None;
+            self.push_console_history("Selection cleared".to_string());
+        }
+        self.debug_lines.push(DebugLine {
+            start: origin,
+            end: line_end,
+            color: line_color,
+        });
+    }
+
     fn queue_physics_gizmos(&mut self) {
         for archetype in &self.ecs.archetypes {
             let Some(physics_components) = &archetype.physics else {
@@ -724,6 +790,34 @@ impl GameApp {
                 });
             }
         }
+    }
+
+    fn queue_selected_gizmo(&mut self) {
+        let Some(selected_id) = self.selected_entity_id else {
+            return;
+        };
+        let Some((position, _, name)) = self.ecs.find_entity_components(selected_id) else {
+            self.selected_entity_id = None;
+            return;
+        };
+        let color = [1.0, 0.85, 0.2];
+        if let Some(physics) = self.ecs.physics_component(selected_id) {
+            self.debug_gizmos.push(DebugGizmo::WireBox {
+                center: position.as_array(),
+                half_extents: physics.half_extents,
+                color,
+            });
+        } else {
+            self.debug_gizmos.push(DebugGizmo::WireSphere {
+                center: position.as_array(),
+                radius: 0.35,
+                color,
+            });
+        }
+        self.debug_gizmos.push(DebugGizmo::Label {
+            position: position.as_array(),
+            text: format!("Selected '{}' (id {})", name.0, selected_id),
+        });
     }
 
     fn flush_debug_gizmos(&mut self) {
@@ -1039,6 +1133,10 @@ impl ApplicationHandler for GameApp {
                             self.hide_console();
                             return;
                         }
+                        if self.creative_mode {
+                            self.disable_creative_mode();
+                            return;
+                        }
                         self.ensure_shutdown();
                         event_loop.exit();
                         return;
@@ -1079,7 +1177,11 @@ impl ApplicationHandler for GameApp {
             }
             WindowEvent::MouseInput { state, button, .. } => {
                 if button == MouseButton::Left && state == winit::event::ElementState::Pressed {
-                    self.handle_fire();
+                    if self.creative_mode {
+                        self.handle_selection();
+                    } else {
+                        self.handle_fire();
+                    }
                 }
             }
             WindowEvent::Focused(focused) => {
@@ -1093,13 +1195,15 @@ impl ApplicationHandler for GameApp {
                 let delta = self.pending_mouse_delta;
                 self.pending_mouse_delta = (0.0, 0.0);
                 CameraSystem::apply_mouse_delta(&mut self.ecs, self.camera_id, delta);
-                InputSystem::update_entity_from_keys(
-                    &mut self.ecs,
-                    self.player_id,
-                    &self.pressed_keys,
-                    &self.just_pressed,
-                    self.creative_mode,
-                );
+                if !self.creative_mode || self.camera_id == self.player_id {
+                    InputSystem::update_entity_from_keys(
+                        &mut self.ecs,
+                        self.player_id,
+                        &self.pressed_keys,
+                        &self.just_pressed,
+                        self.creative_mode,
+                    );
+                }
                 if self.camera_id != self.player_id {
                     InputSystem::update_entity_from_keys(
                         &mut self.ecs,
@@ -1132,6 +1236,7 @@ impl ApplicationHandler for GameApp {
                 };
                 if self.debug_lines_enabled {
                     self.queue_physics_gizmos();
+                    self.queue_selected_gizmo();
                 } else {
                     self.debug_gizmos.clear();
                 }

@@ -125,6 +125,9 @@ fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
     }
 
     let tex_color = textureSample(texture_map, texture_sampler, in.uv);
+    if (tex_color.a < 0.5) {
+        discard;
+    }
     let base = tex_color.xyz * in.color;
     let shaded = base * lighting;
     let fogged = mix(shaded, fog.color.xyz, in.fog);
