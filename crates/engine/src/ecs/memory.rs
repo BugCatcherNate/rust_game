@@ -3,8 +3,8 @@ use std::mem;
 use crate::components::{
     AttributesComponent, CameraComponent, HierarchyComponent, InputComponent, LightComponent,
     ModelComponent, Name, Orientation, ParticleComponent, ParticleEmitterComponent,
-    PhysicsComponent, Position, RenderComponent, ScriptComponent, TerrainComponent,
-    TextureComponent,
+    PhysicsComponent, Position, RenderComponent, ScriptComponent, SpawnerComponent,
+    TerrainComponent, TextureComponent,
 };
 
 use super::ECS;
@@ -147,6 +147,15 @@ impl ECS {
                     "Particle",
                     archetype
                         .particles
+                        .as_ref()
+                        .and_then(|column| column.get(index))
+                        .is_some(),
+                    &mut components,
+                );
+                total += push_usage::<SpawnerComponent>(
+                    "Spawner",
+                    archetype
+                        .spawners
                         .as_ref()
                         .and_then(|column| column.get(index))
                         .is_some(),

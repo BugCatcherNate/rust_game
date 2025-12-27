@@ -1,8 +1,8 @@
 use crate::components::{
     AttributesComponent, CameraComponent, HierarchyComponent, InputComponent, LightComponent,
     ModelComponent, Name, Orientation, ParticleComponent, ParticleEmitterComponent,
-    PhysicsComponent, Position, RenderComponent, ScriptComponent, TerrainComponent,
-    TextureComponent,
+    PhysicsComponent, Position, RenderComponent, ScriptComponent, SpawnerComponent,
+    TerrainComponent, TextureComponent,
 };
 use crate::ecs::{ComponentKind, ComponentSignature};
 
@@ -25,6 +25,7 @@ pub struct EntityComponents {
     pub attributes: Option<AttributesComponent>,
     pub particle_emitters: Option<ParticleEmitterComponent>,
     pub particles: Option<ParticleComponent>,
+    pub spawner: Option<SpawnerComponent>,
 }
 
 impl EntityComponents {
@@ -47,6 +48,7 @@ impl EntityComponents {
             attributes: None,
             particle_emitters: None,
             particles: None,
+            spawner: None,
         }
     }
 }
@@ -71,6 +73,7 @@ pub struct Archetype {
     pub attributes: Option<Vec<AttributesComponent>>,
     pub particle_emitters: Option<Vec<ParticleEmitterComponent>>,
     pub particles: Option<Vec<ParticleComponent>>,
+    pub spawners: Option<Vec<SpawnerComponent>>,
 }
 
 impl Archetype {
@@ -114,6 +117,9 @@ impl Archetype {
             particles: signature
                 .contains(ComponentKind::Particle)
                 .then(|| Vec::new()),
+            spawners: signature
+                .contains(ComponentKind::Spawner)
+                .then(|| Vec::new()),
         }
     }
 
@@ -141,6 +147,7 @@ impl Archetype {
             attributes,
             particle_emitters,
             particles: particle,
+            spawner,
         } = components;
 
         self.entity_ids.push(id);
@@ -212,6 +219,11 @@ impl Archetype {
         } else {
             debug_assert!(particle.is_none());
         }
+        if let Some(spawners) = self.spawners.as_mut() {
+            spawners.push(spawner.expect("spawner component missing for signature"));
+        } else {
+            debug_assert!(spawner.is_none());
+        }
         index
     }
 
@@ -264,6 +276,10 @@ impl Archetype {
             .particles
             .as_mut()
             .map(|column| column.swap_remove(index));
+        let spawner = self
+            .spawners
+            .as_mut()
+            .map(|column| column.swap_remove(index));
 
         let swapped_id = if index < self.entity_ids.len() {
             Some(self.entity_ids[index])
@@ -290,6 +306,7 @@ impl Archetype {
                 attributes,
                 particle_emitters,
                 particles: particle,
+                spawner,
             },
             swapped_id,
         )

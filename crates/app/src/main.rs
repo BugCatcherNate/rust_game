@@ -16,6 +16,7 @@ const LABYRINTH_SCENE_ID: &str = "labyrinth";
 fn build_script_registry() -> Arc<ScriptRegistry> {
     let mut registry = ScriptRegistry::new();
     registry.register_script("spinner", || Box::new(SpinnerScript::default()));
+    registry.register_script("spawner_orbit", || Box::new(SpawnerOrbitScript::default()));
     Arc::new(registry)
 }
 
@@ -137,6 +138,59 @@ struct ShootingSystem {
     message_timer: i32,
     gun_id: Option<u32>,
     particle_seed: u32,
+}
+
+#[derive(Default)]
+struct SpawnerOrbitScript {
+    center: Option<[f32; 3]>,
+}
+
+impl ScriptBehavior for SpawnerOrbitScript {
+    fn update(
+        &mut self,
+        ctx: ScriptContext<'_>,
+        position: &mut Position,
+        _orientation: &mut Orientation,
+        _commands: &mut Vec<ScriptCommand>,
+    ) {
+        let radius = ctx
+            .params
+            .get("radius")
+            .and_then(|value| value.parse::<f32>().ok())
+            .unwrap_or(6.0);
+        let speed = ctx
+            .params
+            .get("speed")
+            .and_then(|value| value.parse::<f32>().ok())
+            .unwrap_or(0.2);
+        let center = self.center.get_or_insert([position.x, position.y, position.z]);
+        if let Some(value) = ctx
+            .params
+            .get("center_x")
+            .and_then(|value| value.parse::<f32>().ok())
+        {
+            center[0] = value;
+        }
+        if let Some(value) = ctx
+            .params
+            .get("center_y")
+            .and_then(|value| value.parse::<f32>().ok())
+        {
+            center[1] = value;
+        }
+        if let Some(value) = ctx
+            .params
+            .get("center_z")
+            .and_then(|value| value.parse::<f32>().ok())
+        {
+            center[2] = value;
+        }
+
+        let angle = ctx.time * speed;
+        position.x = center[0] + radius * angle.cos();
+        position.z = center[2] + radius * angle.sin();
+        position.y = center[1];
+    }
 }
 
 impl ShootingSystem {

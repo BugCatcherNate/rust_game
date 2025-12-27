@@ -2,8 +2,8 @@ use crate::archetypes::{Archetype, EntityComponents};
 use crate::components::{
     AttributesComponent, CameraComponent, HierarchyComponent, InputComponent, LightComponent,
     ModelComponent, Name, Orientation, ParticleComponent, ParticleEmitterComponent,
-    PhysicsComponent, Position, RenderComponent, ScriptComponent, TerrainComponent,
-    TextureComponent,
+    PhysicsComponent, Position, RenderComponent, ScriptComponent, SpawnerComponent,
+    TerrainComponent, TextureComponent,
 };
 use crate::ecs::entity_manager::EntityManager;
 use crate::ecs::event_bus::EventBus;
@@ -278,6 +278,20 @@ impl ECS {
         );
     }
 
+    pub fn add_spawner_component(&mut self, id: u32, component: SpawnerComponent) {
+        let update_value = component.clone();
+        self.add_or_replace_component(
+            id,
+            ComponentKind::Spawner,
+            move |bundle| bundle.spawner = Some(component),
+            move |archetype, index| {
+                if let Some(spawners) = archetype.spawners.as_mut() {
+                    spawners[index] = update_value;
+                }
+            },
+        );
+    }
+
     pub fn remove_render_component(&mut self, id: u32) {
         self.remove_component(id, ComponentKind::Render, |bundle| bundle.render = None);
     }
@@ -334,6 +348,10 @@ impl ECS {
 
     pub fn remove_particle_component(&mut self, id: u32) {
         self.remove_component(id, ComponentKind::Particle, |bundle| bundle.particles = None);
+    }
+
+    pub fn remove_spawner_component(&mut self, id: u32) {
+        self.remove_component(id, ComponentKind::Spawner, |bundle| bundle.spawner = None);
     }
 
     pub fn input_component_mut(&mut self, id: u32) -> Option<&mut InputComponent> {
@@ -478,6 +496,17 @@ impl ECS {
             if let Some(archetype) = self.archetypes.get(archetype_index) {
                 if let Some(models) = archetype.models.as_ref() {
                     return models.get(index_within_archetype);
+                }
+            }
+        }
+        None
+    }
+
+    pub fn spawner_component(&self, id: u32) -> Option<&SpawnerComponent> {
+        if let Some(&(archetype_index, index_within_archetype)) = self.entity_to_location.get(&id) {
+            if let Some(archetype) = self.archetypes.get(archetype_index) {
+                if let Some(spawners) = archetype.spawners.as_ref() {
+                    return spawners.get(index_within_archetype);
                 }
             }
         }

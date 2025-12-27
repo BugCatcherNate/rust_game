@@ -7,9 +7,11 @@ use std::path::Path;
 use crate::components::{
     AttributesComponent, CameraComponent, HierarchyComponent, InputComponent, LightComponent,
     ModelComponent, Name, Orientation, ParticleEmitterComponent, PhysicsBodyType, PhysicsComponent,
-    Position, RenderComponent, ScriptComponent, TerrainComponent, TextureComponent,
+    Position, RenderComponent, ScriptComponent, SpawnerComponent, TerrainComponent,
+    TextureComponent,
 };
 use crate::ecs::ECS;
+use crate::systems::SpawnerSystem;
 use log::warn;
 use serde::Deserialize;
 
@@ -129,6 +131,7 @@ pub struct EntityDefinition {
     pub parent: Option<String>,
     pub tags: Vec<String>,
     pub components: ComponentDefinition,
+    pub template: bool,
 }
 
 impl EntityDefinition {
@@ -140,6 +143,7 @@ impl EntityDefinition {
             parent: None,
             tags: Vec::new(),
             components: ComponentDefinition::default(),
+            template: false,
         }
     }
 
@@ -178,6 +182,7 @@ pub struct ComponentDefinition {
     pub texture: Option<TextureComponentDefinition>,
     pub terrain: Option<TerrainComponentDefinition>,
     pub script: Option<ScriptComponentDefinition>,
+    pub spawner: Option<SpawnerComponentDefinition>,
     pub physics: Option<PhysicsComponentDefinition>,
     pub attributes: Option<AttributesComponentDefinition>,
     pub particle_emitter: Option<ParticleEmitterComponentDefinition>,
@@ -354,6 +359,13 @@ impl Default for SceneSettings {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct SpawnerComponentDefinition {
+    pub template: String,
+    pub interval: f32,
+    pub spawn_on_load: bool,
+}
+
 fn default_terrain_size() -> f32 {
     20.0
 }
@@ -418,6 +430,8 @@ struct EntityConfig {
     #[serde(default)]
     tags: Vec<String>,
     #[serde(default)]
+    template: bool,
+    #[serde(default)]
     components: ComponentsConfig,
 }
 
@@ -445,6 +459,7 @@ struct ComponentsConfig {
     texture: Option<TextureConfig>,
     terrain: Option<TerrainConfig>,
     script: Option<ScriptConfig>,
+    spawner: Option<SpawnerConfig>,
     physics: Option<PhysicsConfig>,
     attributes: Option<AttributesConfig>,
     particle_emitter: Option<ParticleEmitterConfig>,
@@ -501,6 +516,13 @@ struct ScriptConfig {
     name: String,
     #[serde(default)]
     params: HashMap<String, String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct SpawnerConfig {
+    template: String,
+    interval: Option<f32>,
+    spawn_on_load: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -570,6 +592,7 @@ impl EntityConfig {
             z: self.position.z,
         };
         let mut definition = EntityDefinition::new(self.name, position);
+        definition.template = self.template;
         if let Some(orientation) = self.orientation {
             definition = definition.with_orientation(Orientation::from_yaw_pitch_roll(
                 orientation.yaw,
@@ -629,6 +652,11 @@ impl ComponentsConfig {
             script: self.script.map(|cfg| ScriptComponentDefinition {
                 name: cfg.name,
                 params: cfg.params,
+            }),
+            spawner: self.spawner.map(|cfg| SpawnerComponentDefinition {
+                template: cfg.template,
+                interval: cfg.interval.unwrap_or(0.0),
+                spawn_on_load: cfg.spawn_on_load.unwrap_or(true),
             }),
             physics: match self.physics {
                 Some(cfg) => Some(cfg.into_definition()?),
@@ -694,17 +722,21 @@ pub fn apply_scene_definition(scene: &SceneDefinition, ecs: &mut ECS) -> SceneSe
     let mut ordered_ids = Vec::with_capacity(scene.entities.len());
 
     for entity in &scene.entities {
+        if entity.template {
+            continue;
+        }
         let entity_id = spawn_entity_from_definition(ecs, entity);
         name_to_entity.insert(entity.name.clone(), entity_id);
         ordered_ids.push(entity_id);
     }
 
     attach_entity_hierarchies(scene, ecs, &ordered_ids, &name_to_entity);
+    SpawnerSystem::spawn_on_load(scene, ecs);
 
     scene.settings.clone()
 }
 
-fn spawn_entity_from_definition(ecs: &mut ECS, entity: &EntityDefinition) -> u32 {
+pub(crate) fn spawn_entity_from_definition(ecs: &mut ECS, entity: &EntityDefinition) -> u32 {
     let position = entity.position;
     let base_height = position.y;
     let entity_id = ecs.add_entity(position, entity.orientation, Name(entity.name.clone()));
@@ -816,6 +848,19 @@ fn spawn_entity_from_definition(ecs: &mut ECS, entity: &EntityDefinition) -> u32
                 script_cfg.params.clone(),
             ),
         );
+    }
+
+    if components.spawner.is_some() {
+        if let Some(spawner_cfg) = components.spawner.as_ref() {
+            ecs.add_spawner_component(
+                entity_id,
+                SpawnerComponent::new(
+                    spawner_cfg.template.clone(),
+                    spawner_cfg.interval,
+                    spawner_cfg.spawn_on_load,
+                ),
+            );
+        }
     }
 
     if let Some(attributes_cfg) = components.attributes.as_ref() {

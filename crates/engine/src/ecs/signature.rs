@@ -34,6 +34,7 @@ pub enum ComponentKind {
     Attributes,
     ParticleEmitter,
     Particle,
+    Spawner,
 }
 
 impl ComponentKind {
@@ -52,6 +53,7 @@ impl ComponentKind {
             ComponentKind::Attributes => 1 << 10,
             ComponentKind::ParticleEmitter => 1 << 11,
             ComponentKind::Particle => 1 << 12,
+            ComponentKind::Spawner => 1 << 13,
         }
     }
 }

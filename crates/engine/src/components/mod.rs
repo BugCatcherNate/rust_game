@@ -11,6 +11,7 @@ pub mod physics;
 pub mod position;
 pub mod render;
 pub mod script;
+pub mod spawner;
 pub mod terrain;
 pub mod texture;
 
@@ -27,5 +28,6 @@ pub use physics::{PhysicsBodyType, PhysicsComponent};
 pub use position::Position;
 pub use render::RenderComponent;
 pub use script::ScriptComponent;
+pub use spawner::SpawnerComponent;
 pub use terrain::TerrainComponent;
 pub use texture::TextureComponent;

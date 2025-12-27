@@ -5,7 +5,14 @@ environment:
   fog_density: 0.001
   background_sound: assets/audio/forest.wav
 entities:
+  - name: PlayerSpawn
+    position: { x: 0.0, y: 1.6, z: 6.0 }
+    components:
+      spawner:
+        template: Explorer
+
   - name: Explorer
+    template: true
     position: { x: 0.0, y: 1.6, z: 6.0 }
     tags: [player, camera]
     components:
@@ -21,6 +28,7 @@ entities:
         half_extents: [0.3, 0.9, 0.3]
 
   - name: PlayerGun
+    template: true
     position: { x: 0.2, y: 1.4, z: 5.5 }
     parent: Explorer
     tags: [player_gun]
@@ -34,6 +42,32 @@ entities:
         values:
           ammo: 12.0
           damage: 2.0
+
+  - name: CubeTemplate
+    template: true
+    position: { x: 0.0, y: 0.0, z: 0.0 }
+    components:
+      render:
+        color: [0.7, 0.7, 0.9]
+        size: 1.0
+      model:
+        asset: assets/cube.obj
+      physics:
+        body_type: Dynamic
+        half_extents: [0.5, 0.5, 0.5]
+
+  - name: FallingCubeSpawner
+    position: { x: 0.0, y: 25.0, z: 0.0 }
+    components:
+      script:
+        name: spawner_orbit
+        params:
+          radius: "12.0"
+          speed: "0.15"
+      spawner:
+        template: CubeTemplate
+        interval: 1.0
+        spawn_on_load: false
 
   - name: target
     position: { x: 0.0, y: 3.0, z: 0.0 }

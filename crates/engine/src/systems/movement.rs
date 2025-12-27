@@ -9,6 +9,28 @@ impl MovementSystem {
         }
     }
 
+    pub fn update_entity(ecs: &mut ECS, entity_id: u32) {
+        let Some(&(archetype_index, index)) = ecs.entity_to_location.get(&entity_id) else {
+            return;
+        };
+        let archetype = &mut ecs.archetypes[archetype_index];
+        if archetype.physics.is_some() {
+            return;
+        }
+        let (direction, speed) = match archetype
+            .inputs
+            .as_ref()
+            .and_then(|inputs| inputs.get(index))
+        {
+            Some(input) => (input.direction, input.speed),
+            None => return,
+        };
+        let pos = &mut archetype.positions[index];
+        pos.x += direction[0] * speed;
+        pos.y += direction[1] * speed;
+        pos.z += direction[2] * speed;
+    }
+
     fn update_archetype(archetype: &mut Archetype) {
         if archetype.physics.is_some() {
             return;

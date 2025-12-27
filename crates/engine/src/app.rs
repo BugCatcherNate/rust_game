@@ -12,7 +12,7 @@ use crate::scene::{self, SceneLibrary, SceneLookupError};
 use crate::scripts::{ScriptCommand, ScriptRegistry};
 use crate::systems::{
     CameraSystem, HierarchySystem, InputSystem, MovementSystem, ParticleSystem, PhysicsSystem,
-    RenderPrepSystem, ScriptingSystem,
+    RenderPrepSystem, ScriptingSystem, SpawnerSystem,
 };
 use log::{info, warn};
 use rodio::{Decoder, OutputStream, OutputStreamHandle, Sink, Source};
@@ -235,7 +235,7 @@ impl GameApp {
             debug_lines: Vec::new(),
             debug_gizmos: Vec::new(),
             debug_text_labels: Vec::new(),
-            debug_lines_enabled: true,
+            debug_lines_enabled: false,
             console_open: false,
             console_input: String::new(),
             console_history: VecDeque::new(),
@@ -265,11 +265,26 @@ impl GameApp {
         id
     }
 
-    fn build_hud_text(position: &Position, camera: &CameraComponent) -> String {
-        format!(
-            "Rust ECS Demo - WASD to move\nPos: ({:.2}, {:.2}, {:.2})  Yaw: {:.2}  Pitch: {:.2}",
-            position.x, position.y, position.z, camera.yaw, camera.pitch
-        )
+    fn build_hud_text(
+        position: &Position,
+        camera: &CameraComponent,
+        creative_mode: bool,
+    ) -> String {
+        let mut lines = Vec::new();
+        if creative_mode {
+            lines.push("EDIT MODE".to_string());
+            lines.push(format!(
+                "Pos: ({:.2}, {:.2}, {:.2})  Yaw: {:.2}  Pitch: {:.2}",
+                position.x, position.y, position.z, camera.yaw, camera.pitch
+            ));
+        } else {
+            lines.push("Rust ECS Demo - WASD to move".to_string());
+            lines.push(format!(
+                "Pos: ({:.2}, {:.2}, {:.2})  Yaw: {:.2}  Pitch: {:.2}",
+                position.x, position.y, position.z, camera.yaw, camera.pitch
+            ));
+        }
+        lines.join("\n")
     }
 
     fn toggle_console(&mut self) {
@@ -312,7 +327,7 @@ impl GameApp {
                 self.display_memory_usage();
                 return;
             }
-            "creative" => {
+            "edit" => {
                 self.toggle_creative_mode();
                 return;
             }
@@ -396,6 +411,7 @@ impl GameApp {
         if self.creative_mode {
             return;
         }
+        self.set_debug_lines_enabled(true);
         self.stop_background_audio();
         let (position, orientation) = self
             .ecs
@@ -430,6 +446,7 @@ impl GameApp {
         if !self.creative_mode {
             return;
         }
+        self.set_debug_lines_enabled(false);
         if let Some(creative_id) = self.creative_camera_id.take() {
             self.ecs.remove_entity(creative_id);
         }
@@ -775,17 +792,46 @@ impl GameApp {
         });
     }
 
-    fn queue_physics_gizmos(&mut self) {
+    fn queue_entity_gizmos(&mut self) {
         for archetype in &self.ecs.archetypes {
-            let Some(physics_components) = &archetype.physics else {
-                continue;
-            };
-            for (index, physics) in physics_components.iter().enumerate() {
+            for index in 0..archetype.len() {
+                if archetype
+                    .particles
+                    .as_ref()
+                    .and_then(|particles| particles.get(index))
+                    .is_some()
+                {
+                    continue;
+                }
                 let position = archetype.positions[index];
-                let color = Self::debug_color_for_body(physics.body_type);
+                let physics = archetype
+                    .physics
+                    .as_ref()
+                    .and_then(|physics| physics.get(index));
+                let half_extents = if let Some(physics) = physics {
+                    physics.half_extents
+                } else if let Some(terrain) = archetype
+                    .terrains
+                    .as_ref()
+                    .and_then(|terrains| terrains.get(index))
+                {
+                    [terrain.size * 0.5, terrain.height * 0.5, terrain.size * 0.5]
+                } else if let Some(render) = archetype
+                    .renderables
+                    .as_ref()
+                    .and_then(|renderables| renderables.get(index))
+                {
+                    let half = render.size * 0.5;
+                    [half, half, half]
+                } else {
+                    [0.25, 0.25, 0.25]
+                };
+                let color = physics
+                    .map(|physics| Self::debug_color_for_body(physics.body_type))
+                    .unwrap_or([0.6, 0.6, 0.6]);
                 self.debug_gizmos.push(DebugGizmo::WireBox {
                     center: position.as_array(),
-                    half_extents: physics.half_extents,
+                    half_extents,
                     color,
                 });
             }
@@ -976,7 +1022,11 @@ impl GameApp {
             if let Some((position, _, _)) = self.ecs.find_entity_components(self.camera_id) {
                 if let Some(camera) = self.ecs.camera_component(self.camera_id) {
                     renderer.update_camera(position, camera);
-                    renderer.set_ui_text(Self::build_hud_text(position, camera));
+                    renderer.set_ui_text(Self::build_hud_text(
+                        position,
+                        camera,
+                        self.creative_mode,
+                    ));
                 }
             }
             renderer.set_bottom_ui_text(String::new());
@@ -1063,6 +1113,7 @@ impl GameApp {
             ComponentKind::Attributes => self.ecs.remove_attributes_component(entity_id),
             ComponentKind::ParticleEmitter => self.ecs.remove_particle_emitter_component(entity_id),
             ComponentKind::Particle => self.ecs.remove_particle_component(entity_id),
+            ComponentKind::Spawner => self.ecs.remove_spawner_component(entity_id),
         }
     }
 }
@@ -1214,28 +1265,35 @@ impl ApplicationHandler for GameApp {
                     );
                 }
                 self.just_pressed.clear();
-                MovementSystem::update(&mut self.ecs);
-                self.physics_system.update(&mut self.ecs);
-                HierarchySystem::update(&mut self.ecs);
-                for system in self.custom_systems.iter_mut() {
-                    system.update(
-                        &mut self.ecs,
-                        &self.current_scene_id,
-                        &mut self.custom_command_buffer,
-                    );
+                if self.creative_mode {
+                    MovementSystem::update_entity(&mut self.ecs, self.camera_id);
+                } else {
+                    if let Some(scene_definition) = self.scene_library.get(&self.current_scene_id) {
+                        SpawnerSystem::update(scene_definition, &mut self.ecs);
+                    }
+                    MovementSystem::update(&mut self.ecs);
+                    self.physics_system.update(&mut self.ecs);
+                    HierarchySystem::update(&mut self.ecs);
+                    for system in self.custom_systems.iter_mut() {
+                        system.update(
+                            &mut self.ecs,
+                            &self.current_scene_id,
+                            &mut self.custom_command_buffer,
+                        );
+                    }
+                    ParticleSystem::update(&mut self.ecs, Some(self.camera_id));
+                    self.scripting_system.update(&mut self.ecs);
+                    let mut commands = self.scripting_system.take_commands();
+                    commands.extend(self.custom_command_buffer.drain(..));
+                    let _scene_changed = self.process_commands(commands);
                 }
-                ParticleSystem::update(&mut self.ecs, Some(self.camera_id));
-                self.scripting_system.update(&mut self.ecs);
-                let mut commands = self.scripting_system.take_commands();
-                commands.extend(self.custom_command_buffer.drain(..));
-                let _scene_changed = self.process_commands(commands);
                 let console_overlay = if self.console_open {
                     self.console_overlay_text()
                 } else {
                     String::new()
                 };
                 if self.debug_lines_enabled {
-                    self.queue_physics_gizmos();
+                    self.queue_entity_gizmos();
                     self.queue_selected_gizmo();
                 } else {
                     self.debug_gizmos.clear();
@@ -1251,13 +1309,19 @@ impl ApplicationHandler for GameApp {
                     if let Some((position, _, _)) = self.ecs.find_entity_components(self.camera_id)
                     {
                         if let Some(camera) = self.ecs.camera_component(self.camera_id) {
-                            let default_text = Self::build_hud_text(position, camera);
+                            let default_text = Self::build_hud_text(
+                                position,
+                                camera,
+                                self.creative_mode,
+                            );
                             let mut custom_sections = Vec::new();
-                            for system in self.custom_systems.iter_mut() {
-                                if let Some(text) =
-                                    system.hud_text(&self.ecs, &self.current_scene_id)
-                                {
-                                    custom_sections.push(text);
+                            if !self.creative_mode {
+                                for system in self.custom_systems.iter_mut() {
+                                    if let Some(text) =
+                                        system.hud_text(&self.ecs, &self.current_scene_id)
+                                    {
+                                        custom_sections.push(text);
+                                    }
                                 }
                             }
                             if custom_sections.is_empty() {

@@ -5,7 +5,7 @@ use std::sync::Arc;
 use crate::components::{CameraComponent, LightKind, Position};
 use crate::ecs::ECS;
 use bytemuck::{Pod, Zeroable};
-use glam::{Mat4, Vec3};
+use glam::{Mat4, Vec3, Vec4};
 use log::error;
 use wgpu::util::DeviceExt;
 use wgpu::SurfaceError;
@@ -223,6 +223,10 @@ struct CameraUniform {
 }
 
 const MAX_POINT_LIGHTS: usize = 8;
+const CAMERA_FOV_Y: f32 = 45.0_f32.to_radians();
+const CAMERA_NEAR: f32 = 0.1;
+const CAMERA_FAR: f32 = 100.0;
+const CAMERA_CULL_PADDING: f32 = 0.15;
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -1149,6 +1153,35 @@ impl Renderer {
                     .and_then(|column| column.get(index));
 
                 if let (Some(renderable), Some(model)) = (renderable, model) {
+                    let is_terrain = archetype
+                        .terrains
+                        .as_ref()
+                        .and_then(|terrains| terrains.get(index))
+                        .is_some();
+                    let radius = if let Some(physics) = archetype
+                        .physics
+                        .as_ref()
+                        .and_then(|physics| physics.get(index))
+                    {
+                        let extents = Vec3::from_array(physics.half_extents);
+                        extents.length()
+                    } else if let Some(terrain) = archetype
+                        .terrains
+                        .as_ref()
+                        .and_then(|terrains| terrains.get(index))
+                    {
+                        let extents = Vec3::new(
+                            terrain.size * 0.5,
+                            terrain.height * 0.5,
+                            terrain.size * 0.5,
+                        );
+                        extents.length()
+                    } else {
+                        renderable.size * 0.5
+                    };
+                    if !is_terrain && !self.is_visible(position, radius) {
+                        continue;
+                    }
                     let key = ModelKey {
                         model: model.asset_path.clone(),
                         texture: texture.map(|t| t.asset_path.clone()),
@@ -1191,6 +1224,28 @@ impl Renderer {
             }
         }
         self.instance_pool = instance_pool;
+    }
+
+    fn is_visible(&self, position: &Position, radius: f32) -> bool {
+        let aspect = self.size.width.max(1) as f32 / self.size.height.max(1) as f32;
+        let view_pos = self.view_matrix * Vec4::new(position.x, position.y, position.z, 1.0);
+        let depth = -view_pos.z;
+        if depth <= 0.0 {
+            return false;
+        }
+        if depth < CAMERA_NEAR - radius || depth > CAMERA_FAR + radius {
+            return false;
+        }
+        let half_height = depth * (CAMERA_FOV_Y * 0.5).tan();
+        let half_width = half_height * aspect;
+        let padding = depth * CAMERA_CULL_PADDING;
+        if view_pos.x.abs() > half_width + radius + padding {
+            return false;
+        }
+        if view_pos.y.abs() > half_height + radius + padding {
+            return false;
+        }
+        true
     }
 
     fn ensure_model_loaded(&mut self, key: &ModelKey) -> bool {
@@ -1986,7 +2041,7 @@ impl Renderer {
 
 fn build_projection_matrix(size: PhysicalSize<u32>) -> Mat4 {
     let aspect = size.width.max(1) as f32 / size.height.max(1) as f32;
-    Mat4::perspective_rh_gl(45.0_f32.to_radians(), aspect, 0.1, 100.0)
+    Mat4::perspective_rh_gl(CAMERA_FOV_Y, aspect, CAMERA_NEAR, CAMERA_FAR)
 }
 
 fn create_depth_texture(

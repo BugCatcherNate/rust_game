@@ -6,6 +6,7 @@ pub mod particle;
 pub mod physics;
 pub mod rendering;
 pub mod scripting;
+pub mod spawner;
 
 pub use camera::CameraSystem;
 pub use hierarchy::HierarchySystem;
@@ -15,3 +16,4 @@ pub use particle::ParticleSystem;
 pub use physics::{PhysicsSystem, RaycastHit};
 pub use rendering::RenderPrepSystem;
 pub use scripting::ScriptingSystem;
+pub use spawner::SpawnerSystem;
